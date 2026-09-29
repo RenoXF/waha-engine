@@ -4,44 +4,31 @@ interface AvatarProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
-const sizes = {
-  sm: 'w-8 h-8 text-xs',
-  md: 'w-10 h-10 text-sm',
-  lg: 'w-12 h-12 text-base',
-};
+const sizes = { sm: 'w-8 h-8 text-xs', md: 'w-[42px] h-[42px] text-sm', lg: 'w-12 h-12 text-base' };
 
-const colors = [
-  '#00a884', '#53bdeb', '#e77c7c', '#7bc862', '#e0a526',
-  '#6c5ce7', '#fd79a8', '#00cec9', '#fab1a0', '#81ecec',
+const gradients = [
+  'linear-gradient(135deg, #00a884, #00b894)',
+  'linear-gradient(135deg, #53bdeb, #3498db)',
+  'linear-gradient(135deg, #e77c7c, #e74c3c)',
+  'linear-gradient(135deg, #7bc862, #27ae60)',
+  'linear-gradient(135deg, #e0a526, #f39c12)',
+  'linear-gradient(135deg, #6c5ce7, #a29bfe)',
+  'linear-gradient(135deg, #fd79a8, #e84393)',
+  'linear-gradient(135deg, #00cec9, #0984e3)',
 ];
 
-function getColor(name: string) {
+function getGradient(name: string) {
   let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return colors[Math.abs(hash) % colors.length];
+  for (let i = 0; i < (name || '').length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return gradients[Math.abs(hash) % gradients.length];
 }
 
 export default function Avatar({ name, src, size = 'md' }: AvatarProps) {
-  const initials = (name || '?').slice(0, 2).toUpperCase();
-
-  if (src) {
-    return (
-      <img
-        src={src}
-        alt={name}
-        className={`${sizes[size]} rounded-full object-cover`}
-      />
-    );
-  }
-
+  if (src) return <img src={src} alt={name} className={`${sizes[size]} rounded-full object-cover flex-shrink-0`} />;
   return (
-    <div
-      className={`${sizes[size]} rounded-full flex items-center justify-center font-medium flex-shrink-0`}
-      style={{ background: getColor(name), color: '#fff' }}
-    >
-      {initials}
+    <div className={`${sizes[size]} rounded-full flex items-center justify-center font-semibold text-white flex-shrink-0`}
+      style={{ background: getGradient(name) }}>
+      {(name || '?').slice(0, 2).toUpperCase()}
     </div>
   );
 }
