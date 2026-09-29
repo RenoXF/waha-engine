@@ -1,0 +1,5 @@
+[install]
+scopes = {}
+
+[run]
+silent = false
