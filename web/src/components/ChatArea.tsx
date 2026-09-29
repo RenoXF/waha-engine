@@ -112,7 +112,7 @@ export default function ChatArea() {
   };
 
   // Group messages by date
-  let lastDate = '';
+  const dates = new Set<string>();
 
   return (
     <div className="flex-1 flex flex-col h-full">
@@ -155,11 +155,11 @@ export default function ChatArea() {
           </div>
         ) : (
           <Virtuoso
-            data={messages}
+            data={messages || []}
             itemContent={(_, msg) => {
               const msgDate = new Date(msg.wa_timestamp).toDateString();
-              let showDate = false;
-              if (msgDate !== lastDate) { showDate = true; lastDate = msgDate; }
+              const showDate = !dates.has(msgDate);
+              if (showDate) dates.add(msgDate);
               return (<>{showDate && <DatePill date={msg.wa_timestamp} />}<MessageBubble msg={msg} /></>);
             }}
             followOutput="smooth"
