@@ -21,8 +21,8 @@ function formatDate(ts: string) {
 
 function DatePill({ date }: { date: string }) {
   return (
-    <div className="flex justify-center py-2">
-      <div className="px-3 py-1 rounded-lg text-[11px] font-medium" style={{ background: 'rgba(0,0,0,0.35)', color: 'var(--text-secondary)', backdropFilter: 'blur(4px)' }}>
+    <div className="flex justify-center py-3 sticky top-0 z-[1]">
+      <div className="px-3 py-1 rounded-full text-[11px] font-medium glass elevated" style={{ color: 'var(--text-secondary)', fontSize: '11px', letterSpacing: '0.2px' }}>
         {formatDate(date)}
       </div>
     </div>
@@ -44,14 +44,14 @@ function MessageBubble({ msg }: { msg: Message }) {
   }
 
   return (
-    <div className={`flex ${msg.from_me ? 'justify-end' : 'justify-start'} mb-0.5 px-[68px]`}
+    <div className={`flex ${msg.from_me ? 'justify-end' : 'justify-start'} mb-1 px-4 md:px-[56px]`}
       onMouseEnter={() => setShowActions(true)} onMouseLeave={() => setShowActions(false)}>
-      <div className="relative group max-w-[65%]">
-        <div className="px-2.5 py-1.5 rounded-lg" style={{
+      <div className="relative group max-w-[68%] md:max-w-[62%]">
+        <div className="px-3 py-2 rounded-[12px] relative" style={{
           background: msg.from_me ? 'var(--bubble-out)' : 'var(--bubble-in)',
-          boxShadow: '0 1px 0.5px rgba(0,0,0,0.13)',
-          borderTopRightRadius: msg.from_me ? '4px' : '8px',
-          borderTopLeftRadius: !msg.from_me ? '4px' : '8px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.2), 0 1px 0.5px rgba(0,0,0,0.15)',
+          borderTopRightRadius: msg.from_me ? '4px' : '12px',
+          borderTopLeftRadius: !msg.from_me ? '4px' : '12px',
         }}>
           {msg.quoted_id && (
             <div className="text-[11px] px-2 py-1 mb-1 rounded border-l-[3px]" style={{ borderColor: 'var(--accent)', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.15)' }}>
@@ -111,19 +111,23 @@ export default function ChatArea() {
     finally { setSending(false); }
   };
 
-  // Group messages by date
-  const dates = new Set<string>();
+  const datesRef = useRef<Set<string>>(new Set());
+  // reset per render cycle for date pills
+  datesRef.current.clear();
 
   return (
     <div className="flex-1 flex flex-col h-full">
       {/* Chat Header */}
-      <div className="px-4 py-2 flex items-center gap-3" style={{ background: 'var(--panel)', borderBottom: '1px solid var(--border)' }}>
-        <Avatar name={currentChat || ''} />
-        <div className="flex-1">
-          <div className="text-[13px] font-medium">{currentChat}</div>
-          <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>online</div>
+      <div className="px-4 py-2.5 flex items-center gap-3 sticky top-0 z-10" style={{ background: 'var(--panel)', borderBottom: '1px solid var(--border)' }}>
+        <Avatar name={currentChat || ''} size="md" />
+        <div className="flex-1 min-w-0">
+          <div className="text-[15px] font-medium truncate" style={{ color: 'var(--text)' }}>{currentChat}</div>
+          <div className="text-[12px] flex items-center gap-1 mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+            <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent)' }} />
+            online
+          </div>
         </div>
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-1">
           <button className="btn-icon" style={{ color: 'var(--text-secondary)' }} title="Video call">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
           </button>
@@ -158,8 +162,8 @@ export default function ChatArea() {
             data={messages || []}
             itemContent={(_, msg) => {
               const msgDate = new Date(msg.wa_timestamp).toDateString();
-              const showDate = !dates.has(msgDate);
-              if (showDate) dates.add(msgDate);
+              const showDate = !datesRef.current.has(msgDate);
+              if (showDate) datesRef.current.add(msgDate);
               return (<>{showDate && <DatePill date={msg.wa_timestamp} />}<MessageBubble msg={msg} /></>);
             }}
             followOutput="smooth"
@@ -170,7 +174,7 @@ export default function ChatArea() {
       </div>
 
       {/* Input Area */}
-      <div className="px-4 py-2.5 flex items-end gap-2" style={{ background: 'var(--panel)', borderTop: '1px solid var(--border)' }}>
+      <div className="px-4 py-3 flex items-end gap-2" style={{ background: 'var(--panel)', borderTop: '1px solid var(--border)' }}>
         <button className="btn-icon" style={{ color: 'var(--text-secondary)' }} title="Attach">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
         </button>
@@ -183,7 +187,7 @@ export default function ChatArea() {
         <div className="flex-1">
           <textarea placeholder="Type a message" value={input} onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-            rows={1} className="w-full px-3 py-2 rounded-xl text-[13px] resize-none" style={{ background: 'var(--panel-hover)', color: 'var(--text)', minHeight: '36px', maxHeight: '120px' }} />
+            rows={1} className="w-full px-4 py-2.5 rounded-lg text-[14px] resize-none" style={{ background: 'var(--panel-hover)', color: 'var(--text)', minHeight: '40px', maxHeight: '120px' }} />
         </div>
         <button onClick={handleSend} disabled={!input.trim() || sending}
           className="w-10 h-10 rounded-full flex items-center justify-center transition-all flex-shrink-0 disabled:opacity-30"

@@ -24,10 +24,10 @@ function getGradient(name: string) {
 }
 
 export default function Avatar({ name, src, size = 'md' }: AvatarProps) {
-  if (src) return <img src={src} alt={name} className={`${sizes[size]} rounded-full object-cover flex-shrink-0`} />;
+  if (src) return <img src={src} alt={name} className={`${sizes[size]} rounded-full object-cover flex-shrink-0 ring-1 ring-white/10`} style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />;
   return (
-    <div className={`${sizes[size]} rounded-full flex items-center justify-center font-semibold text-white flex-shrink-0`}
-      style={{ background: getGradient(name) }}>
+    <div className={`${sizes[size]} rounded-full flex items-center justify-center font-semibold text-white flex-shrink-0 ring-1 ring-white/10`}
+      style={{ background: getGradient(name), boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
       {(name || '?').slice(0, 2).toUpperCase()}
     </div>
   );
