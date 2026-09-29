@@ -8,6 +8,8 @@ async function request<T = unknown>(path: string, options?: RequestInit): Promis
   });
 
   if (res.status === 401) {
+    // Don't reload for auth check — just throw
+    if (path === '/auth/me') throw new Error('Unauthorized');
     window.location.reload();
     throw new Error('Unauthorized');
   }
