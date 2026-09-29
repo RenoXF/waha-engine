@@ -2,8 +2,14 @@ import { useEffect } from 'react';
 import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
 import { sessionStore } from '../stores/sessionStore';
+import { uiStore } from '../stores/uiStore';
 import Sidebar from './Sidebar';
 import ChatArea from './ChatArea';
+import SettingsModal from './SettingsModal';
+import UserModal from './UserModal';
+import NewChatModal from './NewChatModal';
+import GroupDrawer from './GroupDrawer';
+import MediaViewer from './MediaViewer';
 
 export default function Layout() {
   const currentChat = chatStore((s) => s.currentChat);
@@ -11,6 +17,8 @@ export default function Layout() {
   const logout = authStore((s) => s.logout);
   const sessionState = sessionStore((s) => s.state);
   const user = authStore((s) => s.user);
+  const activeModal = uiStore((s) => s.activeModal);
+  const openModal = uiStore((s) => s.openModal);
 
   useEffect(() => { loadChats(); }, [loadChats]);
 
@@ -27,13 +35,14 @@ export default function Layout() {
             />
             <span className="text-sm font-medium">{user?.username}</span>
           </div>
-          <button
-            onClick={logout}
-            className="text-xs px-2 py-1 rounded"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            Logout
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => openModal('newChat')} className="px-2 py-1 text-xs rounded" style={{ color: 'var(--text-secondary)' }}>New</button>
+            <button onClick={() => openModal('settings')} className="px-2 py-1 text-xs rounded" style={{ color: 'var(--text-secondary)' }}>⚙</button>
+            {user?.role === 'admin' && (
+              <button onClick={() => openModal('users')} className="px-2 py-1 text-xs rounded" style={{ color: 'var(--text-secondary)' }}>Users</button>
+            )}
+            <button onClick={logout} className="px-2 py-1 text-xs rounded" style={{ color: 'var(--text-secondary)' }}>Logout</button>
+          </div>
         </div>
 
         {/* Chat list via Sidebar */}
@@ -53,6 +62,13 @@ export default function Layout() {
           </div>
         )}
       </div>
+
+      {/* Modals */}
+      {activeModal === 'settings' && <SettingsModal />}
+      {activeModal === 'users' && <UserModal />}
+      {activeModal === 'newChat' && <NewChatModal />}
+      {activeModal === 'groupDrawer' && <GroupDrawer />}
+      {activeModal === 'mediaViewer' && <MediaViewer />}
     </div>
   );
 }

@@ -120,12 +120,7 @@ export default function ChatArea() {
     <div className="flex-1 flex flex-col h-full">
       {/* Header */}
       <div className="px-4 py-2 flex items-center gap-3" style={{ background: 'var(--panel)', borderBottom: '1px solid var(--border)' }}>
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-xs"
-          style={{ background: 'var(--border)' }}
-        >
-          {(currentChat || '').slice(0, 2).toUpperCase()}
-        </div>
+        <Avatar name={currentChat || ''} />
         <span className="text-sm font-medium">{currentChat}</span>
       </div>
 
