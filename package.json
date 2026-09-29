@@ -1,11 +1,11 @@
 {
   "name": "waha-engine",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun --watch run index.ts",
-    "start": "bun run index.ts",
+    "dev": "bun --watch run src/index.ts",
+    "start": "bun run src/index.ts",
     "test": "bun test",
     "db:migrate": "bun run -e \"import('./src/db/migrate').then(m => m.migrate())\"",
     "db:seed": "bun run -e \"import('./src/db/seed').then(s => s.seed())\"",
