@@ -16,14 +16,27 @@ export default function Sidebar() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {/* WhatsApp Header */}
+      <div className="px-4 py-2.5 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
+        <h1 className="text-[17px] font-semibold">WhatsApp</h1>
+        <div className="flex items-center gap-1">
+          <button className="btn-icon" style={{ color: 'var(--text-secondary)' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+          </button>
+          <button className="btn-icon" style={{ color: 'var(--text-secondary)' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          </button>
+        </div>
+      </div>
+
       {/* Search */}
-      <div className="px-3 py-2" style={{ borderBottom: '1px solid var(--border)' }}>
+      <div className="px-3 py-1.5" style={{ borderBottom: '1px solid var(--border)' }}>
         <div className="relative">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="14" height="14" viewBox="0 0 24 24" fill="var(--text-secondary)">
             <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
           </svg>
-          <input type="text" placeholder="Search or start new chat" value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 rounded-lg text-sm" style={{ background: 'var(--panel-hover)', color: 'var(--text)' }} />
+          <input type="text" placeholder="Search or start a new chat" value={search} onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-1.5 rounded-lg text-[13px]" style={{ background: 'var(--panel-hover)', color: 'var(--text)' }} />
         </div>
       </div>
 
@@ -32,19 +45,16 @@ export default function Sidebar() {
       <div className="flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
           <div className="p-8 text-center" style={{ color: 'var(--text-secondary)' }}>
-            <svg className="mx-auto mb-2 opacity-30" width="48" height="48" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
-            </svg>
+            <svg className="mx-auto mb-2 opacity-30" width="48" height="48" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
             <div className="text-sm">{search ? 'No chats found' : 'No conversations yet'}</div>
           </div>
         ) : (
-          filtered.map((chat, i) => (
+          filtered.map((chat) => (
             <div key={chat.chat_jid} onClick={() => chatStore.getState().selectChat(chat.chat_jid)}
               className="px-3 py-3 cursor-pointer flex items-center gap-3 transition-colors"
               style={{
                 background: currentChat === chat.chat_jid ? 'var(--panel-hover)' : 'transparent',
                 borderBottom: '1px solid var(--border)',
-                animationDelay: `${i * 20}ms`,
               }}
               onMouseEnter={(e) => { if (currentChat !== chat.chat_jid) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
               onMouseLeave={(e) => { if (currentChat !== chat.chat_jid) e.currentTarget.style.background = 'transparent'; }}>
