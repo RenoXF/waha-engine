@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Virtuoso } from 'react-virtuoso';
 import { chatStore, Message } from '../stores/chatStore';
 import { api } from '../api/client';
+import Avatar from './Avatar';
+import EmojiPicker from './EmojiPicker';
+import ScrollFAB from './ScrollFAB';
 
 function formatTime(ts: string) {
   const d = new Date(ts);
@@ -91,6 +94,12 @@ export default function ChatArea() {
   const { messages, currentChat, loading } = chatStore();
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   const handleSend = async () => {
     if (!input.trim() || !currentChat || sending) return;
@@ -145,7 +154,20 @@ export default function ChatArea() {
       </div>
 
       {/* Input */}
-      <div className="px-4 py-2 flex items-center gap-2" style={{ background: 'var(--panel)', borderTop: '1px solid var(--border)' }}>
+      <div className="px-4 py-2 flex items-center gap-2 relative" style={{ background: 'var(--panel)', borderTop: '1px solid var(--border)' }}>
+        {showEmoji && (
+          <EmojiPicker
+            onSelect={(emoji) => setInput((prev) => prev + emoji)}
+            onClose={() => setShowEmoji(false)}
+          />
+        )}
+        <button
+          onClick={() => setShowEmoji(!showEmoji)}
+          className="w-8 h-8 rounded-full flex items-center justify-center"
+          style={{ color: 'var(--text-secondary)' }}
+        >
+          😊
+        </button>
         <input
           type="text"
           placeholder="Type a message..."

@@ -4,6 +4,7 @@ import { config } from '@/config';
 import { authRoutes } from './auth';
 import { webhookRoutes } from './webhook';
 import { sseRoutes } from './sse';
+import { sessionRoutes } from './session';
 import { messageRoutes } from './messages';
 import { contactRoutes } from './contacts';
 import { groupRoutes } from './groups';
@@ -17,6 +18,7 @@ export function createServer() {
     .use(authRoutes)
     .use(webhookRoutes)
     .use(sseRoutes)
+    .use(sessionRoutes)
     .use(messageRoutes)
     .use(contactRoutes)
     .use(groupRoutes)
