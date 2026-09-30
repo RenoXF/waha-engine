@@ -4,7 +4,7 @@ interface AvatarProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
-const sizes = { sm: 'w-8 h-8 text-xs', md: 'w-[42px] h-[42px] text-sm', lg: 'w-12 h-12 text-base' };
+const sizes = { sm: 'w-8 h-8 text-xs', md: 'w-[49px] h-[49px] text-sm', lg: 'w-12 h-12 text-base' };
 
 const gradients = [
   'linear-gradient(135deg, #00a884, #00b894)',
@@ -19,15 +19,29 @@ const gradients = [
 
 function getGradient(name: string) {
   let hash = 0;
-  for (let i = 0; i < (name || '').length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  for (let i = 0; i < (name || '').length; i++)
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
   return gradients[Math.abs(hash) % gradients.length];
 }
 
 export default function Avatar({ name, src, size = 'md' }: AvatarProps) {
-  if (src) return <img src={src} alt={name} className={`${sizes[size]} rounded-full object-cover flex-shrink-0 ring-1 ring-white/10`} style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />;
+  if (src)
+    return (
+      <img
+        src={src}
+        alt={name}
+        className={`${sizes[size]} rounded-full object-cover flex-shrink-0 ring-1 ring-white/10`}
+        style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}
+      />
+    );
   return (
-    <div className={`${sizes[size]} rounded-full flex items-center justify-center font-semibold text-white flex-shrink-0 ring-1 ring-white/10`}
-      style={{ background: getGradient(name), boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
+    <div
+      className={`${sizes[size]} rounded-full flex items-center justify-center font-semibold text-white flex-shrink-0 ring-1 ring-white/10`}
+      style={{
+        background: getGradient(name),
+        boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+      }}
+    >
       {(name || '?').slice(0, 2).toUpperCase()}
     </div>
   );
