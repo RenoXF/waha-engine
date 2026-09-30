@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { chatStore } from '../stores/chatStore';
 import { uiStore } from '../stores/uiStore';
-import { authStore } from '../stores/authStore';
+import { authStore } from "../stores/authStore";
+import { sessionStore } from "../stores/sessionStore";
 import Avatar from './Avatar';
 import FilterButtons from './FilterButtons';
 
@@ -16,6 +17,7 @@ export default function Sidebar() {
   const menuRef = useRef<HTMLDivElement>(null);
   const openModal = uiStore((s) => s.openModal);
   const logout = authStore((s) => s.logout);
+  const sessionState = sessionStore((s) => s.state);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -32,7 +34,7 @@ export default function Sidebar() {
     const matchFilter =
       activeFilter === 'All' ? true :
       activeFilter === 'Unread' ? (c.unread_count ?? 0) > 0 :
-      activeFilter === 'Groups' ? c.is_group : true;
+      activeFilter === 'Groups' ? c.chat_type === 'group' : true;
     return matchSearch && matchFilter;
   });
 
@@ -49,6 +51,10 @@ export default function Sidebar() {
         <div className="header-actions">
           <button onClick={() => openModal('newChat')} className="btn-icon" style={{ color: 'var(--text-secondary)' }} title="New chat" aria-label="New chat">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          </button>
+          <button onClick={() => openModal('connect')} className="btn-icon relative" style={{ color: sessionState === 'WORKING' ? 'var(--accent)' : 'var(--text-secondary)' }} title="Connect WhatsApp" aria-label="Connect WhatsApp">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+            {sessionState === 'WORKING' && <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full" style={{ background: 'var(--accent)', border: '2px solid var(--panel)' }} />}
           </button>
           <div className="relative" ref={menuRef}>
             <button onClick={() => setShowMenu((v) => !v)} className="btn-icon" style={{ color: 'var(--text-secondary)' }} title="Menu" aria-label="Menu" aria-expanded={showMenu}>

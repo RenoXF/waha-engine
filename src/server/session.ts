@@ -3,6 +3,7 @@ import { getDb } from '@/db/client';
 import * as waha from '@/waha/client';
 import { config } from '@/config';
 import { ssePush } from '@/waha/sse-pubsub';
+import { logger } from '@/logger';
 
 export const sessionRoutes = new Elysia({ prefix: '/session' })
   // GET /session — status
@@ -15,9 +16,23 @@ export const sessionRoutes = new Elysia({ prefix: '/session' })
     }
   })
 
-  // GET /session/qr — get QR code
+  // GET /session/qr — get QR code (auto-recover if FAILED)
   .get('/qr', async () => {
     try {
+      // Check session status first
+      let session: any = null;
+      try { session = await waha.getSession(); } catch {}
+
+      // If FAILED/STOPPED, restart to get fresh QR
+      if (session?.status === 'FAILED' || session?.status === 'STOPPED') {
+        try {
+          await waha.startSession(config.wahaSessionName);
+          logger.info(`[session] recovering from ${session.status}`);
+        } catch (e) {
+          logger.info(`[session] recover: ${String(e).slice(0, 100)}`);
+        }
+      }
+
       const qr = await waha.getQR();
       return { success: true, data: qr };
     } catch (err) {
@@ -25,10 +40,31 @@ export const sessionRoutes = new Elysia({ prefix: '/session' })
     }
   })
 
-  // POST /session/start — start session
+  // POST /session/start — create if needed + start session
   .post('/start', async ({ request }) => {
     const body = await request.json().catch(() => ({})) as Record<string, unknown>;
     try {
+      // Try to get session first
+      let session: any = null;
+      try { session = await waha.getSession(); } catch {}
+
+      // Create session if not found
+      if (!session || session?.error) {
+        try {
+          await waha.createSession(config.wahaSessionName);
+        } catch (e) {
+          logger.info(`[session] create: ${String(e).slice(0, 100)}`);
+        }
+      } else if (session?.status === 'FAILED') {
+        // Restart failed session
+        try {
+          await waha.restartSession();
+          logger.info('[session] restarted FAILED session');
+        } catch (e) {
+          logger.info(`[session] restart: ${String(e).slice(0, 100)}`);
+        }
+      }
+      
       const result = await waha.startSession(config.wahaSessionName, body);
       ssePush('device_state', { state: 'STARTING' });
       return { success: true, data: result };

@@ -64,6 +64,15 @@ export const api = {
   createUser: (username: string, password: string, role?: string) =>
     request('/users', { method: 'POST', body: JSON.stringify({ username, password, role }) }),
 
+  // Session WAHA
+  getSession: () => request('/session'),
+  getQR: () => request('/session/qr'),
+  startSession: (body?: Record<string, unknown>) =>
+    request('/session/start', { method: 'POST', body: JSON.stringify(body ?? {}) }),
+  stopSession: () => request('/session/stop', { method: 'POST' }),
+  requestPairingCode: (phoneNumber: string) =>
+    request('/session/pairing-code', { method: 'POST', body: JSON.stringify({ phoneNumber }) }),
+
   // Health
   health: () => request('/health'),
 };

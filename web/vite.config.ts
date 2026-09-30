@@ -18,6 +18,7 @@ export default defineConfig({
       '/webhook': 'http://localhost:4000',
       '/sse': 'http://localhost:4000',
       '/health': 'http://localhost:4000',
+      '/session': 'http://localhost:4000',
     },
   },
 });

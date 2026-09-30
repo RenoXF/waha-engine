@@ -10,6 +10,7 @@ import GroupDrawer from './GroupDrawer';
 import MediaViewer from './MediaViewer';
 import StarredMessages from './StarredMessages';
 import ArchivedChats from './ArchivedChats';
+import ConnectModal from './ConnectModal';
 
 export default function Layout() {
   const currentChat = chatStore((s) => s.currentChat);
@@ -56,6 +57,7 @@ export default function Layout() {
       {activeModal === 'settings' && <SettingsModal />}
       {activeModal === 'users' && <UserModal />}
       {activeModal === 'newChat' && <NewChatModal />}
+      {activeModal === 'connect' && <ConnectModal />}
       {activeModal === 'starred' && <StarredMessages />}
       {activeModal === 'archived' && <ArchivedChats />}
       {activeModal === 'groupDrawer' && <GroupDrawer />}

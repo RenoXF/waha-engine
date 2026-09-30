@@ -1,5 +1,4 @@
-import { useRef, useState, useCallback } from 'react';
-import { Virtuoso } from 'react-virtuoso';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { chatStore, Message } from '../stores/chatStore';
 import { api } from '../api/client';
 import Avatar from './Avatar';
@@ -123,6 +122,25 @@ export default function ChatArea() {
   const [sending, setSending] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const prevLenRef = useRef(0);
+
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    if (messages.length > prevLenRef.current && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+    prevLenRef.current = messages.length;
+  }, [messages.length]);
+
+  // Scroll to bottom when opening a chat
+  useEffect(() => {
+    if (scrollRef.current) {
+      requestAnimationFrame(() => {
+        if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      });
+    }
+  }, [currentChat]);
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
@@ -249,39 +267,26 @@ export default function ChatArea() {
             </div>
           </div>
         ) : (
-          <>
-            {/* Encryption notice */}
+          <div className="msg-scroll" ref={scrollRef}>
             <div className="encrypt-notice">
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM15.1 8H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z" />
               </svg>
               Messages and calls are end-to-end encrypted. No one outside of
               this chat, not even WhatsApp, can read or listen to them.
             </div>
-
-            <Virtuoso
-              data={messages || []}
-              itemContent={(_, msg) => {
-                const msgDate = new Date(msg.wa_timestamp).toDateString();
-                const showDate = !datesRef.current.has(msgDate);
-                if (showDate) datesRef.current.add(msgDate);
-                return (
-                  <>
-                    {showDate && <DatePill date={msg.wa_timestamp} />}
-                    <MessageBubble msg={msg} />
-                  </>
-                );
-              }}
-              followOutput="smooth"
-              initialTopMostItemIndex={messages.length - 1}
-              style={{ height: '100%' }}
-            />
-          </>
+            {messages.map((msg) => {
+              const msgDate = new Date(msg.wa_timestamp).toDateString();
+              const showDate = !datesRef.current.has(msgDate);
+              if (showDate) datesRef.current.add(msgDate);
+              return (
+                <div key={msg.id} className="msg-item">
+                  {showDate && <DatePill date={msg.wa_timestamp} />}
+                  <MessageBubble msg={msg} />
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 

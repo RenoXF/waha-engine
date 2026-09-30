@@ -18,7 +18,7 @@ export function useSSE() {
     es.addEventListener('message', (e) => {
       try {
         const data = JSON.parse(e.data);
-        chatStore.getState().addMessage(data.message as Message);
+        if (data?.message) chatStore.getState().addMessage(data.message as Message);
         chatStore.getState().loadChats();
       } catch {}
     });
