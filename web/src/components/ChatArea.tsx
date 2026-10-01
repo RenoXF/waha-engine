@@ -33,33 +33,37 @@ function DatePill({ date }: { date: string }) {
   );
 }
 
-function TimeMeta({ msg, variant }: { msg: Message; variant: 'float' | 'overlay' }) {
-  const time = formatTime(msg.wa_timestamp);
-  const tickFill = msg.from_me ? 'var(--tick-read)' : 'var(--tick-sent)';
+function TickIcon({ read }: { read: boolean }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill={read ? 'var(--tick-read)' : 'var(--tick-sent)'}
+    >
+      <path d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z" />
+    </svg>
+  );
+}
 
-  if (variant === 'overlay') {
-    return (
-      <span className="msg-media-overlay">
-        {msg.is_edited && <span className="msg-media-overlay-edited">edited</span>}
-        <span>{time}</span>
-        {msg.from_me && (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill={tickFill}>
-            <path d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z" />
-          </svg>
-        )}
-      </span>
-    );
-  }
-
+/* Time that floats inline at end of text (for text & caption messages) */
+function FloatMeta({ msg }: { msg: Message }) {
   return (
     <span className="msg-meta">
       {msg.is_edited && <span className="msg-edited">edited</span>}
-      <span className="msg-time">{time}</span>
-      {msg.from_me && (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill={tickFill}>
-          <path d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z" />
-        </svg>
-      )}
+      <span className="msg-time">{formatTime(msg.wa_timestamp)}</span>
+      {msg.from_me && <TickIcon read={!!msg.from_me} />}
+    </span>
+  );
+}
+
+/* Time that overlays on bottom-right of image (for media-only) */
+function OverlayMeta({ msg }: { msg: Message }) {
+  return (
+    <span className="msg-media-overlay">
+      {msg.is_edited && <span className="msg-media-overlay-edited">edited</span>}
+      <span>{formatTime(msg.wa_timestamp)}</span>
+      {msg.from_me && <TickIcon read={!!msg.from_me} />}
     </span>
   );
 }
@@ -78,53 +82,62 @@ function MessageBubble({ msg }: { msg: Message }) {
     );
   }
 
-  const isMedia = msg.message_type !== 'text' && msg.message_type !== 'reaction';
+  const hasVisualMedia =
+    msg.has_media &&
+    msg.message_type !== 'text' &&
+    msg.message_type !== 'reaction';
+
+  const isNonVisualType =
+    !msg.has_media &&
+    msg.message_type !== 'text' &&
+    msg.message_type !== 'reaction';
+
   const hasCaption = !!msg.body;
-  const isMediaOnly = isMedia && !hasCaption;
+  const isMediaOnly = hasVisualMedia && !hasCaption;
 
   return (
     <div className={`msg-row ${msg.from_me ? 'msg-row-out' : 'msg-row-in'}`}>
       <div className="msg-bubble-wrap">
         <div
-          className={`msg-bubble ${msg.from_me ? 'msg-bubble-out' : 'msg-bubble-in'} ${isMedia ? 'msg-bubble-media' : ''} ${isMediaOnly ? 'msg-bubble-media-only' : ''}`}
+          className={`msg-bubble ${msg.from_me ? 'msg-bubble-out' : 'msg-bubble-in'} ${hasVisualMedia ? 'msg-bubble-media' : ''} ${isMediaOnly ? 'msg-bubble-media-only' : ''}`}
         >
           {msg.quoted_id && <div className="msg-quoted">Reply</div>}
 
-          {/* Media */}
-          {isMedia && (
+          {/* ── Visual media (image/video with actual file) ── */}
+          {hasVisualMedia && (
             <div className="msg-media-container">
-              {msg.has_media ? (
-                <img
-                  src={`/files/download/${msg.id}`}
-                  alt="media"
-                  className="msg-media-img"
-                  loading="lazy"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.opacity = '0.3';
-                  }}
-                />
-              ) : (
-                <div className="msg-media-fallback">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
-                  </svg>
-                  <span>[{msg.message_type}]</span>
-                </div>
-              )}
-              {/* Overlay time for media-only */}
-              {isMediaOnly && <TimeMeta msg={msg} variant="overlay" />}
+              <img
+                src={`/files/download/${msg.id}`}
+                alt="media"
+                className="msg-media-img"
+                loading="lazy"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.opacity = '0.3';
+                }}
+              />
+              {isMediaOnly && <OverlayMeta msg={msg} />}
             </div>
           )}
 
-          {/* Caption or text */}
+          {/* ── Non-visual type without file (link, document, etc.) ── */}
+          {isNonVisualType && !hasCaption && (
+            <div className="msg-type-badge">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z" />
+              </svg>
+              <span>{msg.message_type}</span>
+            </div>
+          )}
+
+          {/* ── Body text ── */}
           {hasCaption && (
-            <span className={`msg-text ${isMedia ? 'msg-text-caption' : ''}`}>
+            <span className={`msg-text ${hasVisualMedia ? 'msg-text-caption' : ''}`}>
               {msg.body}
             </span>
           )}
 
-          {/* Float time for text or media+caption */}
-          {!isMediaOnly && <TimeMeta msg={msg} variant="float" />}
+          {/* ── Time ── */}
+          {isMediaOnly ? null : <FloatMeta msg={msg} />}
         </div>
 
         {/* Action bar */}

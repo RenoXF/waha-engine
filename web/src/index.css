@@ -579,13 +579,11 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
   gap: 4px;
 }
 
-
 /* ═══════════════════════════════════════════════
    MESSAGES
    ═══════════════════════════════════════════════ */
 .msg-container {
   flex: 1;
-  min-height: 0;
   overflow: hidden;
   background-color: var(--bg-pattern);
   background-image: url('/voSdkk88H7C.svg');
@@ -597,8 +595,6 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
 .msg-scroll {
   height: 100%;
   overflow-y: auto;
-  overflow-x: hidden;
-  padding-bottom: 8px;
 }
 
 .msg-loading {
@@ -654,7 +650,6 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
 
 /* Encryption notice */
 .encrypt-notice {
-  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -692,7 +687,7 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
   box-shadow: 0 1px 1px rgba(0,0,0,0.13);
 }
 
-/* Message row */
+/* ── Message row ── */
 .msg-row {
   display: flex;
   margin-bottom: 2px;
@@ -706,7 +701,7 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
   .msg-row { padding: 0 56px; }
 }
 
-/* Deleted message */
+/* ── Deleted ── */
 .msg-deleted {
   display: flex;
   justify-content: center;
@@ -725,7 +720,7 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
   background: rgba(0,0,0,0.15);
 }
 
-/* Bubble */
+/* ── Bubble ── */
 .msg-bubble-wrap {
   position: relative;
   max-width: 65%;
@@ -737,10 +732,11 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
 }
 
 .msg-bubble {
-  padding: 6px 8px 4px;
+  padding: 6px 7px 8px;
   border-radius: 8px;
   position: relative;
   box-shadow: 0 1px 0.5px rgba(0,0,0,0.13);
+  display: flow-root;
 }
 
 .msg-bubble-in {
@@ -753,45 +749,106 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
   border-top-right-radius: 4px;
 }
 
+/* Media bubble */
+.msg-bubble-media {
+  padding: 3px 3px 4px;
+}
+
+.msg-bubble-media-only {
+  padding: 3px;
+}
+
+/* ── Quoted reply ── */
 .msg-quoted {
   font-size: 11px;
   padding: 4px 8px;
-  margin-bottom: 4px;
+  margin: 4px 8px 4px 5px;
   border-radius: 4px;
   border-left: 3px solid var(--accent);
   color: var(--text-secondary);
   background: rgba(0,0,0,0.15);
 }
 
-.msg-media-preview {
-  font-size: 11px;
-  margin-bottom: 4px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--text-secondary);
+/* ── Media container ── */
+.msg-media-container {
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+  max-width: 300px;
+}
+
+.msg-media-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 80px;
+  max-height: 320px;
+  object-fit: cover;
+  border-radius: 6px;
   background: rgba(0,0,0,0.15);
 }
 
+/* ── Type badge ── */
+.msg-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: rgba(0,0,0,0.12);
+  margin-bottom: 2px;
+}
+
+/* ── Time overlay on media ── */
+.msg-media-overlay {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.9);
+  background: rgba(0,0,0,0.45);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.msg-media-overlay-edited {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* ── Text ── */
 .msg-text {
   font-size: 13.5px;
   line-height: 19px;
   color: var(--text);
   word-break: break-word;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
+.msg-text-caption {
+  display: block;
+  padding: 4px 5px 0;
+}
+
+/* ── Float meta ── */
 .msg-meta {
   float: right;
   margin-left: 8px;
-  margin-top: 2px;
+  margin-top: 3px;
   display: flex;
   align-items: center;
   gap: 3px;
   position: relative;
   bottom: -1px;
+  white-space: nowrap;
 }
 
 .msg-edited {
@@ -804,7 +861,7 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
   color: rgba(255,255,255,0.55);
 }
 
-/* Action bar */
+/* ── Action bar ── */
 .msg-action-bar {
   position: absolute;
   top: -32px;
@@ -1261,26 +1318,6 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
   opacity: 0.5;
   text-align: center;
 }
-
-/* ═══════════════════════════════════════════════
-   MESSAGES (revised) — media overlay, bubble media
-   ═══════════════════════════════════════════════ */
-
-/* Media bubble adjustments */
-.msg-bubble-media {
-  padding: 3px;
-}
-
-.msg-bubble-media-only {
-  padding: 3px;
-}
-
-/* Media container */
-.msg-media-container {
-  position: relative;
-  border-radius: 6px;
-  overflow: hidden;
-  max-width: 300px;
 }
 
 .msg-media-img {
@@ -1305,46 +1342,3 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
   gap: 6px;
 }
 
-/* Time overlay on media (no caption) */
-.msg-media-overlay {
-  position: absolute;
-  bottom: 5px;
-  right: 5px;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 11px;
-  color: rgba(255,255,255,0.85);
-  background: rgba(0,0,0,0.45);
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.msg-media-overlay-edited {
-  font-size: 10px;
-  opacity: 0.7;
-}
-
-/* Caption under media gets padding */
-.msg-text-caption {
-  display: block;
-  padding: 4px 5px 0;
-}
-
-/* Action bar button */
-.msg-action-btn {
-  width: 28px; height: 28px;
-  border-radius: 6px;
-  display: flex; align-items: center; justify-content: center;
-  border: none; background: transparent;
-  cursor: pointer;
-  transition: background 0.12s ease;
-  font-size: 14px;
-  color: var(--text-secondary);
-}
-
-.msg-action-btn:hover {
-  background: rgba(255,255,255,0.06);
-}
