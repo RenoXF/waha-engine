@@ -74,6 +74,7 @@ function MessageBubble({ msg }: { msg: Message }) {
             </div>
           )}
           {msg.body && <span className="msg-text">{msg.body}</span>}
+          {!msg.body && msg.has_media && <div style={{ height: '18px' }} />}
           <span className="msg-meta">
             {msg.is_edited && <span className="msg-edited">edited</span>}
             <span className="msg-time">{formatTime(msg.wa_timestamp)}</span>
