@@ -4,6 +4,8 @@ import { migrate } from '@/db/migrate';
 import { seed } from '@/db/seed';
 import { registerShutdown } from '@/shutdown';
 import { logger } from '@/logger';
+import { Cron } from 'croner';
+import { syncFromWaha } from '@/waha/sync';
 
 async function main() {
   logger.info('[boot] Starting WAHA Engine...');
@@ -31,6 +33,17 @@ async function main() {
   server.listen({ port: config.port, hostname: config.host }, () => {
     logger.info(`[boot] ✓ Server running at http://${config.host}:${config.port}`);
   });
+
+  // 6. Periodic sync every 5 minutes (contacts, LID mapping, chats)
+  new Cron('*/5 * * * *', async () => {
+    try {
+      await syncFromWaha();
+      logger.info('[cron] Periodic sync complete');
+    } catch (e) {
+      logger.error(e, '[cron] Periodic sync failed');
+    }
+  });
+  logger.info('[boot] ✓ Periodic sync scheduled (every 5 min)');
 }
 
 main().catch((err) => {

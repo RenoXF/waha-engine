@@ -12,6 +12,18 @@ export async function syncFromWaha(): Promise<void> {
   const session = config.wahaSessionName;
   const db = getDb();
 
+  // Guard: only sync when session is WORKING
+  try {
+    const status = await waha.getSession(session) as { status?: string };
+    if (status?.status !== 'WORKING') {
+      logger.debug(`[sync] Skipped — session status: ${status?.status}`);
+      return;
+    }
+  } catch {
+    logger.debug('[sync] Skipped — session not reachable');
+    return;
+  }
+
   logger.info('[sync] Pulling chats from WAHA...');
 
   // 0. Sync contacts first
