@@ -22,28 +22,37 @@ export const filesRoutes = new Elysia()
     });
   })
 
-  // Serve media from WAHA local storage
+  // Serve media: check WAHA .media/ then local Media/
   .get('/files/download/:messageId', async ({ params }) => {
     const { messageId } = params;
     if (messageId.includes('..') || messageId.includes('/') || messageId.includes('\\')) {
       return new Response('Invalid ID', { status: 400 });
     }
 
-    // Try all extensions in WAHA media folder
-    const sessions = ['default'];
     const exts = ['jpeg', 'jpg', 'png', 'webp', 'mp4', 'ogg', 'opus', 'pdf', 'mp3', 'gif', 'webm'];
+    const types = ['picture', 'video', 'audio', 'document'];
 
-    for (const session of sessions) {
+    // 1. Try WAHA .media/{session}/
+    for (const ext of exts) {
+      const filePath = join(LOCAL_MEDIA_DIR, 'default', `${messageId}.${ext}`);
+      try {
+        await stat(filePath);
+        const file = Bun.file(filePath);
+        return new Response(file, {
+          headers: { 'Cache-Control': 'private, max-age=86400', 'Content-Type': file.type || 'application/octet-stream' },
+        });
+      } catch {}
+    }
+
+    // 2. Try local Media/{type}/
+    for (const type of types) {
       for (const ext of exts) {
-        const filePath = join(LOCAL_MEDIA_DIR, session, `${messageId}.${ext}`);
+        const filePath = join(APP_MEDIA_DIR, type, `${messageId}.${ext}`);
         try {
           await stat(filePath);
           const file = Bun.file(filePath);
           return new Response(file, {
-            headers: {
-              'Cache-Control': 'private, max-age=86400',
-              'Content-Type': file.type || 'application/octet-stream',
-            },
+            headers: { 'Cache-Control': 'private, max-age=86400', 'Content-Type': file.type || 'application/octet-stream' },
           });
         } catch {}
       }
