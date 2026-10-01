@@ -67,6 +67,7 @@ export function useSSE() {
 
     es.onerror = () => {
       es.close();
+      esRef.current = null;
       setTimeout(() => {
         if (authStore.getState().user) connect();
       }, retryRef.current);
