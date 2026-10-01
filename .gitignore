@@ -9,8 +9,8 @@ dist
 # code coverage
 coverage
 
-# WAHA (cloned separately)
-waha/
+# WAHA (cloned separately) — only root-level waha/, not src/waha/
+/waha/
 
 # media files
 Media/
