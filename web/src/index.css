@@ -1341,3 +1341,116 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
   gap: 6px;
 }
 
+
+/* ═══════════════════════════════════════════════
+   STATUS VIEWER (Story)
+   ═══════════════════════════════════════════════ */
+.status-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0,0,0,0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.status-viewer {
+  position: relative;
+  width: 420px;
+  max-width: 95vw;
+  height: 90vh;
+  max-height: 750px;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.status-progress-bars {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px 4px;
+  z-index: 2;
+}
+
+.status-progress-track {
+  flex: 1;
+  height: 2.5px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.3);
+  overflow: hidden;
+}
+
+.status-progress-fill {
+  height: 100%;
+  background: #fff;
+  transition: width 0.1s linear;
+}
+
+.status-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  z-index: 2;
+}
+
+.status-close-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: rgba(255,255,255,0.1);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.status-close-btn:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.status-viewer-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0 12px 12px;
+}
+
+.status-viewer-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.status-viewer-text {
+  color: #fff;
+  font-size: 20px;
+  text-align: center;
+  padding: 24px;
+  line-height: 1.5;
+}
+
+.status-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: rgba(255,255,255,0.15);
+  cursor: pointer;
+  z-index: 2;
+  transition: background 0.15s ease;
+}
+
+.status-nav-btn:hover {
+  background: rgba(255,255,255,0.3);
+}
+
+.status-nav-prev { left: 8px; }
+.status-nav-next { right: 8px; }
