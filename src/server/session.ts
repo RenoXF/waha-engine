@@ -3,6 +3,7 @@ import { getDb } from '@/db/client';
 import * as waha from '@/waha/client';
 import { config } from '@/config';
 import { ssePush } from '@/waha/sse-pubsub';
+import { syncFromWaha } from '@/waha/sync';
 import { logger } from '@/logger';
 
 export const sessionRoutes = new Elysia({ prefix: '/session' })
@@ -105,6 +106,16 @@ export const sessionRoutes = new Elysia({ prefix: '/session' })
     try {
       const result = await waha.requestPairingCode(config.wahaSessionName, phoneNumber);
       return { success: true, data: result };
+    } catch (err) {
+      return Response.json({ error: String(err) }, { status: 500 });
+    }
+  })
+
+  // POST /session/sync — pull history from WAHA store
+  .post('/sync', async () => {
+    try {
+      await syncFromWaha();
+      return { success: true };
     } catch (err) {
       return Response.json({ error: String(err) }, { status: 500 });
     }
