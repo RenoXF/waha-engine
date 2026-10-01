@@ -43,6 +43,7 @@ export const chatStore = create<{
   loading: boolean;
   loadChats: () => Promise<void>;
   selectChat: (jid: string) => Promise<void>;
+  clearChat: () => void;
   loadMore: () => Promise<void>;
   addMessage: (msg: Message) => void;
   updateMessage: (id: string, updates: Partial<Message>) => void;
@@ -64,6 +65,8 @@ export const chatStore = create<{
     set({ messages: data, loading: false });
     api.markRead(jid).catch(() => {});
   },
+
+  clearChat: () => set({ currentChat: null, messages: [], loading: false }),
 
   loadMore: async () => {
     const { currentChat, messages } = get();

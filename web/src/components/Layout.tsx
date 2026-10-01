@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { chatStore } from '../stores/chatStore';
 import { uiStore } from '../stores/uiStore';
 import Sidebar from './Sidebar';
@@ -21,6 +21,15 @@ export default function Layout() {
   useEffect(() => {
     loadChats();
   }, [loadChats]);
+
+  // Clear chat when status view closes → show empty state
+  const prevModal = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevModal.current === 'statusView' && activeModal !== 'statusView') {
+      chatStore.getState().clearChat();
+    }
+    prevModal.current = activeModal;
+  }, [activeModal]);
 
   return (
     <div className="dash-layout">
