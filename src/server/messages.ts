@@ -5,7 +5,7 @@ import * as waha from '@/waha/client';
 import { config } from '@/config';
 
 export const messageRoutes = new Elysia({ prefix: '/messages' })
-  // GET /messages — list chats
+  // GET /messages — list chats (exclude broadcast/status)
   .get('/', async () => {
     const db = getDb();
     const chats = await db`
@@ -17,6 +17,22 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
       LIMIT 200
     `;
     return { success: true, data: chats };
+  })
+
+  // GET /messages/status — all status/broadcast messages
+  .get('/status', async () => {
+    const db = getDb();
+    const statuses = await db`
+      SELECT m.id, m.from_jid, m.body, m.message_type, m.has_media, m.wa_timestamp,
+             m.media_mime, m.media_path,
+             COALESCE(c.push_name, c.custom_name, m.from_jid) as display_name
+      FROM app_messages m
+      LEFT JOIN app_contacts c ON m.from_jid = c.jid
+      WHERE m.chat_jid LIKE '%@broadcast'
+      ORDER BY m.wa_timestamp DESC
+      LIMIT 100
+    `;
+    return { success: true, data: statuses };
   })
 
   // GET /messages/search?q=
