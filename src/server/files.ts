@@ -1,20 +1,20 @@
 import { Elysia } from 'elysia';
 import { join } from 'path';
 import { stat } from 'fs/promises';
-import * as waha from '@/waha/client';
-import { logger } from '@/logger';
 
-const MEDIA_DIR = join(import.meta.dir, '../../Media');
+const LOCAL_MEDIA_DIR = join(import.meta.dir, '../../waha/.media');
+const APP_MEDIA_DIR = join(import.meta.dir, '../../Media');
 const ALLOWED_TYPES = ['picture', 'video', 'audio', 'document', 'contact_avatar'];
 
 export const filesRoutes = new Elysia()
+  // Serve local app media files
   .get('/files/:type/:filename', async ({ params }) => {
     const { type, filename } = params;
     if (!ALLOWED_TYPES.includes(type)) return new Response('Invalid type', { status: 400 });
     if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
       return new Response('Invalid filename', { status: 400 });
     }
-    const filePath = join(MEDIA_DIR, type, filename);
+    const filePath = join(APP_MEDIA_DIR, type, filename);
     try { await stat(filePath); } catch { return new Response('Not found', { status: 404 }); }
     const file = Bun.file(filePath);
     return new Response(file, {
@@ -22,18 +22,32 @@ export const filesRoutes = new Elysia()
     });
   })
 
+  // Serve media from WAHA local storage
   .get('/files/download/:messageId', async ({ params }) => {
-    try {
-      const file = await waha.getFile(params.messageId);
-      if (!file?.url) return new Response('Not available', { status: 404 });
-      const res = await fetch(file.url);
-      if (!res.ok) return new Response('Download failed', { status: 502 });
-      const buffer = await res.arrayBuffer();
-      return new Response(buffer, {
-        headers: { 'Content-Type': file.mimetype || 'application/octet-stream', 'Cache-Control': 'private, max-age=86400' },
-      });
-    } catch (err) {
-      logger.error(err, `[files] Download failed: ${params.messageId}`);
-      return new Response('Download failed', { status: 500 });
+    const { messageId } = params;
+    if (messageId.includes('..') || messageId.includes('/') || messageId.includes('\\')) {
+      return new Response('Invalid ID', { status: 400 });
     }
+
+    // Try all extensions in WAHA media folder
+    const sessions = ['default'];
+    const exts = ['jpeg', 'jpg', 'png', 'webp', 'mp4', 'ogg', 'opus', 'pdf', 'mp3', 'gif', 'webm'];
+
+    for (const session of sessions) {
+      for (const ext of exts) {
+        const filePath = join(LOCAL_MEDIA_DIR, session, `${messageId}.${ext}`);
+        try {
+          await stat(filePath);
+          const file = Bun.file(filePath);
+          return new Response(file, {
+            headers: {
+              'Cache-Control': 'private, max-age=86400',
+              'Content-Type': file.type || 'application/octet-stream',
+            },
+          });
+        } catch {}
+      }
+    }
+
+    return new Response('Media not found', { status: 404 });
   });
