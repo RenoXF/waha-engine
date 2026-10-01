@@ -50,16 +50,15 @@ export default function StatusView() {
     if (!current) return;
     setProgress(0);
     const interval = setInterval(() => {
-      setProgress((p) => {
-        if (p >= 100) {
-          goNext();
-          return 0;
-        }
-        return p + 2;
-      });
+      setProgress((p) => Math.min(p + 2, 100));
     }, 100);
     return () => clearInterval(interval);
-  }, [index, goNext, current]);
+  }, [index, current]);
+
+  // When progress completes, advance or close (outside render)
+  useEffect(() => {
+    if (progress >= 100) goNext();
+  }, [progress, goNext]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
