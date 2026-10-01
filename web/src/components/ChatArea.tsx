@@ -73,7 +73,7 @@ function MessageBubble({ msg }: { msg: Message }) {
               )}
             </div>
           )}
-          <span className="msg-text">{msg.body || '[No content]'}</span>
+          {msg.body && <span className="msg-text">{msg.body}</span>}
           <span className="msg-meta">
             {msg.is_edited && <span className="msg-edited">edited</span>}
             <span className="msg-time">{formatTime(msg.wa_timestamp)}</span>
