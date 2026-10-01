@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api/client';
+import { uiStore } from '../stores/uiStore';
 import Avatar from './Avatar';
 
 interface StatusItem {
@@ -33,6 +34,8 @@ export default function StatusView() {
     if (index < statuses.length - 1) {
       setIndex(index + 1);
       setProgress(0);
+    } else {
+      uiStore.getState().closeModal();
     }
   }, [index, statuses.length]);
 
