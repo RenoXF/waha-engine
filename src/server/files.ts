@@ -1,6 +1,7 @@
 import { Elysia } from 'elysia';
 import { join } from 'path';
 import { stat } from 'fs/promises';
+import { getDb } from '@/db/client';
 
 const LOCAL_MEDIA_DIR = join(import.meta.dir, '../../waha/.media');
 const APP_MEDIA_DIR = join(import.meta.dir, '../../Media');
@@ -22,17 +23,31 @@ export const filesRoutes = new Elysia()
     });
   })
 
-  // Serve media: check WAHA .media/ then local Media/
+  // Serve media: check DB media_path first, then WAHA .media/, then local Media/
   .get('/files/download/:messageId', async ({ params }) => {
     const { messageId } = params;
     if (messageId.includes('..') || messageId.includes('/') || messageId.includes('\\')) {
       return new Response('Invalid ID', { status: 400 });
     }
 
-    const exts = ['jpeg', 'jpg', 'png', 'webp', 'mp4', 'ogg', 'opus', 'pdf', 'mp3', 'gif', 'webm'];
-    const types = ['picture', 'video', 'audio', 'document'];
+    // 1. Try DB media_path first
+    try {
+      const db = getDb();
+      const rows = await db`SELECT media_path FROM app_messages WHERE id = ${messageId} LIMIT 1`;
+      if (rows[0]?.media_path) {
+        const filePath = join(import.meta.dir, '../../..', rows[0].media_path);
+        try {
+          await stat(filePath);
+          const file = Bun.file(filePath);
+          return new Response(file, {
+            headers: { 'Cache-Control': 'private, max-age=86400', 'Content-Type': file.type || 'application/octet-stream' },
+          });
+        } catch {}
+      }
+    } catch {}
 
-    // 1. Try WAHA .media/{session}/
+    // 2. Try WAHA .media/{session}/
+    const exts = ['jpeg', 'jpg', 'png', 'webp', 'mp4', 'ogg', 'opus', 'pdf', 'mp3', 'gif', 'webm'];
     for (const ext of exts) {
       const filePath = join(LOCAL_MEDIA_DIR, 'default', `${messageId}.${ext}`);
       try {
@@ -44,10 +59,13 @@ export const filesRoutes = new Elysia()
       } catch {}
     }
 
-    // 2. Try local Media/{type}/
+    // 3. Try clean ID (extract last part after _)
+    const parts = messageId.split('_');
+    const cleanId = parts.length >= 3 ? parts[2] : messageId;
+    const types = ['picture', 'video', 'audio', 'document'];
     for (const type of types) {
       for (const ext of exts) {
-        const filePath = join(APP_MEDIA_DIR, type, `${messageId}.${ext}`);
+        const filePath = join(APP_MEDIA_DIR, type, `${cleanId}.${ext}`);
         try {
           await stat(filePath);
           const file = Bun.file(filePath);
