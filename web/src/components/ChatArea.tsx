@@ -57,7 +57,7 @@ function MessageBubble({ msg }: { msg: Message }) {
           {msg.message_type !== 'text' && msg.message_type !== 'reaction' && (
             <div className="mb-1">
               {msg.has_media ? (
-                <div className="rounded-lg overflow-hidden max-w-[300px]">
+                <div className="rounded-lg overflow-hidden max-w-[300px] relative">
                   <img
                     src={`/files/download/${msg.id}`}
                     alt="media"
@@ -65,6 +65,16 @@ function MessageBubble({ msg }: { msg: Message }) {
                     loading="lazy"
                     onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
                   />
+                  {!msg.body && (
+                    <div className="absolute bottom-1 right-1 flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: 'rgba(0,0,0,0.5)' }}>
+                      <span className="text-[10.5px]" style={{ color: 'rgba(255,255,255,0.8)' }}>{formatTime(msg.wa_timestamp)}</span>
+                      {msg.from_me && (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--tick-read)">
+                          <path d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z" />
+                        </svg>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1" style={{ background: 'rgba(0,0,0,0.15)', color: 'var(--text-secondary)' }}>
@@ -74,8 +84,9 @@ function MessageBubble({ msg }: { msg: Message }) {
             </div>
           )}
           {msg.body && <span className="msg-text">{msg.body}</span>}
-          {!msg.body && msg.has_media && <div style={{ height: '18px' }} />}
-          <span className="msg-meta">
+          {!msg.body && msg.has_media && <div style={{ height: '4px' }} />}
+          {!(msg.has_media && !msg.body) && (
+            <span className="msg-meta">
             {msg.is_edited && <span className="msg-edited">edited</span>}
             <span className="msg-time">{formatTime(msg.wa_timestamp)}</span>
             {msg.from_me && (
@@ -89,6 +100,7 @@ function MessageBubble({ msg }: { msg: Message }) {
               </svg>
             )}
           </span>
+          )}
         </div>
 
         {/* Action bar */}
