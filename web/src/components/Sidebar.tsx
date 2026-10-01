@@ -3,10 +3,20 @@ import { chatStore } from '../stores/chatStore';
 import { uiStore } from '../stores/uiStore';
 import { authStore } from "../stores/authStore";
 import { sessionStore } from "../stores/sessionStore";
+import { api } from '../api/client';
 import Avatar from './Avatar';
 import FilterButtons from './FilterButtons';
 
 type TabType = 'chats' | 'status' | 'calls';
+
+interface CallItem {
+  id: string;
+  chat_jid: string;
+  from_jid: string;
+  body: string;
+  wa_timestamp: string;
+  display_name: string;
+}
 
 export default function Sidebar() {
   const { chats, currentChat } = chatStore();
@@ -14,10 +24,17 @@ export default function Sidebar() {
   const [activeTab, setActiveTab] = useState<TabType>('chats');
   const [activeFilter, setActiveFilter] = useState('All');
   const [showMenu, setShowMenu] = useState(false);
+  const [calls, setCalls] = useState<CallItem[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
   const openModal = uiStore((s) => s.openModal);
   const logout = authStore((s) => s.logout);
   const sessionState = sessionStore((s) => s.state);
+
+  useEffect(() => {
+    if (activeTab === 'calls') {
+      api.getCalls().then(({ data }) => setCalls(data)).catch(() => {});
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -37,12 +54,6 @@ export default function Sidebar() {
       activeFilter === 'Groups' ? c.chat_type === 'group' : true;
     return matchSearch && matchFilter;
   });
-
-  const callChats = chats.filter((c) =>
-    (c.last_message_preview || '').includes('Panggilan') ||
-    (c.last_message_preview || '').includes('📞') ||
-    (c.last_message_preview || '').includes('📹')
-  );
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -167,7 +178,7 @@ export default function Sidebar() {
             })
           )
         ) : activeTab === 'calls' ? (
-          callChats.length === 0 ? (
+          calls.length === 0 ? (
             <div className="chat-list-empty">
               <div className="chat-list-empty-icon">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/></svg>
@@ -176,24 +187,22 @@ export default function Sidebar() {
               <div className="chat-list-empty-desc">Missed calls will appear here</div>
             </div>
           ) : (
-            callChats.map((chat) => (
+            calls.map((call) => (
               <div
-                key={chat.chat_jid}
-                onClick={() => chatStore.getState().selectChat(chat.chat_jid)}
-                className={`chat-item ${currentChat === chat.chat_jid ? 'chat-item-active' : ''}`}
+                key={call.id}
+                onClick={() => chatStore.getState().selectChat(call.chat_jid)}
+                className={`chat-item ${currentChat === call.chat_jid ? 'chat-item-active' : ''}`}
               >
-                <Avatar name={chat.name || chat.chat_jid} size="md" />
+                <Avatar name={call.display_name || call.from_jid} size="md" />
                 <div className="chat-item-body">
                   <div className="chat-item-top">
-                    <span className="chat-item-name">{chat.name || chat.chat_jid}</span>
+                    <span className="chat-item-name">{call.display_name || call.from_jid}</span>
                     <span className="chat-item-time">
-                      {chat.last_message_at
-                        ? new Date(chat.last_message_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-                        : ''}
+                      {new Date(call.wa_timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
                   <div className="chat-item-bottom">
-                    <span className="chat-item-preview">{chat.last_message_preview}</span>
+                    <span className="chat-item-preview">{call.body}</span>
                   </div>
                 </div>
               </div>

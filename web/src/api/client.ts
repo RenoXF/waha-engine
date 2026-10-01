@@ -37,6 +37,7 @@ export const api = {
     if (cursor && cursorId) url += `&cursor=${cursor}&cursorId=${cursorId}`;
     return request(url);
   },
+  getCalls: () => request('/messages/calls'),
   sendText: (recipient: string, message: string) =>
     request('/messages/send-text', { method: 'POST', body: JSON.stringify({ recipient, message }) }),
   sendReply: (recipient: string, message: string, quotedId: string) =>

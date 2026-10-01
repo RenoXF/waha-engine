@@ -213,6 +213,21 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
     return { success: true };
   })
 
+  // GET /messages/calls — all call notifications
+  .get('/calls', async () => {
+    const db = getDb();
+    const calls = await db`
+      SELECT m.id, m.chat_jid, m.from_jid, m.body, m.wa_timestamp,
+             COALESCE(c.push_name, c.custom_name, m.from_jid) as display_name
+      FROM app_messages m
+      LEFT JOIN app_contacts c ON m.from_jid = c.jid
+      WHERE m.message_type = 'call_notification'
+      ORDER BY m.wa_timestamp DESC
+      LIMIT 100
+    `;
+    return { success: true, data: calls };
+  })
+
   // POST /messages/read
   .post('/read', async ({ request }) => {
     const body = await request.json();
