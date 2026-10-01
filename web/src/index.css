@@ -1318,7 +1318,6 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
   opacity: 0.5;
   text-align: center;
 }
-}
 
 .msg-media-img {
   display: block;
