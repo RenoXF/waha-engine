@@ -9,14 +9,39 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
   .get('/', async () => {
     const db = getDb();
     const chats = await db`
-      SELECT * FROM app_chats
-      WHERE is_archived = false
-        AND chat_jid NOT LIKE '%@broadcast'
-        AND chat_jid NOT LIKE '%@newsletter'
-      ORDER BY is_pinned DESC, last_message_at DESC NULLS LAST
+      SELECT
+        ch.*,
+        COALESCE(
+          c.push_name,
+          c.custom_name,
+          pn_c.push_name,
+          pn_c.custom_name,
+          ch.name,
+          ch.chat_jid
+        ) AS resolved_name,
+        lm.pn AS resolved_phone
+      FROM app_chats ch
+      -- Direct contact match
+      LEFT JOIN app_contacts c ON c.jid = ch.chat_jid
+      -- LID → PN mapping
+      LEFT JOIN app_lid_pn_mapping lm ON lm.lid = ch.chat_jid
+      -- Contact via resolved PN
+      LEFT JOIN app_contacts pn_c ON pn_c.jid = lm.pn
+      WHERE ch.is_archived = false
+        AND ch.chat_jid NOT LIKE '%@broadcast'
+        AND ch.chat_jid NOT LIKE '%@newsletter'
+      ORDER BY ch.is_pinned DESC, ch.last_message_at DESC NULLS LAST
       LIMIT 200
     `;
-    return { success: true, data: chats };
+
+    // Replace name with resolved name
+    const data = chats.map((c) => ({
+      ...c,
+      name: c.resolved_name || c.name,
+      is_lid: String(c.chat_jid).endsWith('@lid'),
+    }));
+
+    return { success: true, data };
   })
 
   // GET /messages/status — all status/broadcast messages

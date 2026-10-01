@@ -161,6 +161,22 @@ export async function getGroups(session = config.wahaSessionName) {
   return request({ method: 'GET', path: `/api/${session}/groups` });
 }
 
+// ===== LID ↔ Phone Number mapping =====
+
+export async function getAllLids(session = config.wahaSessionName, limit = 1000) {
+  return request<Array<{ lid: string; pn: string | null }>>({
+    method: 'GET',
+    path: `/api/${session}/lids?limit=${limit}`,
+  });
+}
+
+export async function getPnByLid(lid: string, session = config.wahaSessionName) {
+  return request<{ lid: string; pn: string | null }>({
+    method: 'GET',
+    path: `/api/${session}/lids/${lid}`,
+  });
+}
+
 export async function getMessages(session: string, chatId: string, limit = 50) {
   return request({ method: 'GET', path: `/api/${session}/chats/${chatId}/messages?limit=${limit}` });
 }

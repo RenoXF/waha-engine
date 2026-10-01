@@ -40,6 +40,24 @@ export async function syncFromWaha(): Promise<void> {
     logger.error(e, '[sync] Failed to sync contacts');
   }
 
+  // 0b. Sync LID → PN mapping
+  try {
+    const lids = await waha.getAllLids(session) as Array<{ lid: string; pn: string | null }>;
+    const list = Array.isArray(lids) ? lids : [];
+    logger.info(`[sync] Found ${list.length} LID mappings`);
+
+    for (const m of list) {
+      if (!m.lid || !m.pn) continue;
+      await db`
+        INSERT INTO app_lid_pn_mapping (lid, pn, updated_at)
+        VALUES (${m.lid}, ${m.pn}, now())
+        ON CONFLICT (lid) DO UPDATE SET pn = EXCLUDED.pn, updated_at = now()
+      `.catch(() => {});
+    }
+  } catch (e) {
+    logger.error(e, '[sync] Failed to sync LID mappings');
+  }
+
   // 1. Get chat list
   const chatsRes = await waha.getChats(session) as { data?: any[] } | any[];
   const chats = Array.isArray(chatsRes) ? chatsRes : chatsRes?.data || [];
