@@ -63,6 +63,7 @@ export default function StatusView() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') uiStore.getState().closeModal();
       if (e.key === 'ArrowRight') goNext();
       if (e.key === 'ArrowLeft') goPrev();
     };
@@ -119,8 +120,16 @@ export default function StatusView() {
             </div>
           </div>
         </div>
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
-          {index + 1} / {statuses.length}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+            {index + 1} / {statuses.length}
+          </span>
+          <button
+            onClick={() => uiStore.getState().closeModal()}
+            style={{ width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'rgba(255,255,255,0.1)', cursor: 'pointer', color: '#fff' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
         </div>
       </div>
 
