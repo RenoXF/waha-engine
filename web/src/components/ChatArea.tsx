@@ -66,7 +66,7 @@ function MessageBubble({ msg }: { msg: Message }) {
                     onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
                   />
                   {!msg.body && (
-                    <div className="absolute right-1 flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: 'rgba(0,0,0,0.5)', bottom: '12px' }}>
+                    <div className="absolute right-1 flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: 'rgba(0,0,0,0.5)', bottom: '2px' }}>
                       <span className="text-[10.5px]" style={{ color: 'rgba(255,255,255,0.8)' }}>{formatTime(msg.wa_timestamp)}</span>
                       {msg.from_me && (
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--tick-read)">
