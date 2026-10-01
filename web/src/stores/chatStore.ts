@@ -28,6 +28,8 @@ export interface Message {
   has_media: boolean;
   media_path: string | null;
   media_mime: string | null;
+  media_url: string | null;
+  media_filename: string | null;
   is_edited: boolean;
   is_deleted: boolean;
   wa_timestamp: string;

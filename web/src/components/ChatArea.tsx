@@ -55,16 +55,22 @@ function MessageBubble({ msg }: { msg: Message }) {
         >
           {msg.quoted_id && <div className="msg-quoted">Reply</div>}
           {msg.message_type !== 'text' && msg.message_type !== 'reaction' && (
-            <div className="msg-media-preview">
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
-              </svg>
-              [{msg.message_type}]
+            <div className="mb-1">
+              {msg.has_media ? (
+                <div className="rounded-lg overflow-hidden max-w-[300px]">
+                  <img
+                    src={`/files/download/${msg.id}`}
+                    alt="media"
+                    className="w-full h-auto"
+                    loading="lazy"
+                    onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
+                  />
+                </div>
+              ) : (
+                <div className="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1" style={{ background: 'rgba(0,0,0,0.15)', color: 'var(--text-secondary)' }}>
+                  📎 [{msg.message_type}]
+                </div>
+              )}
             </div>
           )}
           <span className="msg-text">{msg.body || '[No content]'}</span>
