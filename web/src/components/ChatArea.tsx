@@ -96,7 +96,7 @@ function MessageBubble({ msg }: { msg: Message }) {
     msg.message_type !== 'reaction' &&
     !isCallNotification;
 
-  const hasCaption = !!msg.body;
+  const hasCaption = !!msg.body && !isCallNotification;
   const isMediaOnly = hasVisualMedia && !hasCaption;
 
   return (
@@ -116,8 +116,6 @@ function MessageBubble({ msg }: { msg: Message }) {
               <span>{msg.body}</span>
             </div>
           )}
-
-          {/* ── Visual media (image/video with actual file) ── */}
           {hasVisualMedia && (
             <div className="msg-media-container">
               <img
