@@ -16,9 +16,18 @@ export default defineConfig({
       '/users': 'http://localhost:4000',
       '/presence': 'http://localhost:4000',
       '/webhook': 'http://localhost:4000',
-      '/sse': 'http://localhost:4000',
       '/health': 'http://localhost:4000',
       '/session': 'http://localhost:4000',
+      '/sse': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+        ws: false,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('Accept', 'text/event-stream');
+          });
+        },
+      },
     },
   },
 });
