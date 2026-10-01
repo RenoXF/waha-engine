@@ -6,7 +6,6 @@ import { sessionStore } from "../stores/sessionStore";
 import { api } from '../api/client';
 import Avatar from './Avatar';
 import FilterButtons from './FilterButtons';
-import StatusViewer from './StatusViewer';
 
 type TabType = 'chats' | 'status' | 'calls';
 
@@ -39,7 +38,6 @@ export default function Sidebar() {
   const [showMenu, setShowMenu] = useState(false);
   const [calls, setCalls] = useState<CallItem[]>([]);
   const [statuses, setStatuses] = useState<StatusItem[]>([]);
-  const [viewStatus, setViewStatus] = useState<{ index: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const openModal = uiStore((s) => s.openModal);
   const logout = authStore((s) => s.logout);
@@ -206,7 +204,7 @@ export default function Sidebar() {
             </div>
           ) : (
             statuses.map((st, idx) => (
-              <div key={st.id} className="chat-item cursor-pointer" onClick={() => setViewStatus({ index: idx })}>
+              <div key={st.id} className="chat-item cursor-pointer" onClick={() => uiStore.getState().openModal('statusView')}>
                 <Avatar name={st.display_name || st.from_jid} size="md" />
                 <div className="chat-item-body">
                   <div className="chat-item-top">
@@ -259,14 +257,6 @@ export default function Sidebar() {
           <div className="tab-empty">No status updates</div>
         )}
       </div>
-
-      {viewStatus && (
-        <StatusViewer
-          statuses={statuses}
-          initialIndex={viewStatus.index}
-          onClose={() => setViewStatus(null)}
-        />
-      )}
     </div>
   );
 }
