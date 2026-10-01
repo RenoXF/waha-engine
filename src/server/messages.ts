@@ -11,6 +11,8 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
     const chats = await db`
       SELECT * FROM app_chats
       WHERE is_archived = false
+        AND chat_jid NOT LIKE '%@broadcast'
+        AND chat_jid NOT LIKE '%@newsletter'
       ORDER BY is_pinned DESC, last_message_at DESC NULLS LAST
       LIMIT 200
     `;
