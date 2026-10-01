@@ -1,8 +1,0 @@
-        chat_jid         |          name           | chat_type |                    last_message_preview                     
--------------------------+-------------------------+-----------+-------------------------------------------------------------
- 628123456789@c.us       | 628123456789@c.us       | contact   | Duplicate test
- 120363304325920491@g.us | 120363304325920491@g.us | contact   | - 1 menu (perusahaan) -> create -> nama, layanan, kapasitas+
-                         |                         |           | - di dalamnya baru ada opsi masing masin
- 49521090408656@lid      | 49521090408656@lid      | contact   | ppppp
-(3 rows)
-
