@@ -55,12 +55,6 @@ export async function handleWebhook(event: string, payload: Record<string, unkno
         ssePush('presence', payload);
         break;
 
-      case 'contacts.update':
-      case 'contacts.upsert':
-      case 'contact.update':
-        await handleContacts(payload);
-        break;
-
       case 'group.v2.join':
       case 'group.v2.update':
       case 'group.v2.participants':
@@ -117,6 +111,22 @@ async function handleMessage(payload: Record<string, unknown>): Promise<void> {
 
   // Skip newsletter only (keep broadcast/status)
   if (chatJid.includes('@newsletter')) return;
+
+  // ── Auto-save contact from message metadata ──
+  // WAHA sends pushName in _data (raw Baileys message)
+  const rawData = msg._data as Record<string, unknown> | undefined;
+  const pushName = (rawData?.pushName as string) || (msg.notifyName as string) || null;
+  const senderJid = (msg.participant as string) || (fromMe ? (msg.to as string) : chatJid);
+
+  if (senderJid && pushName) {
+    await db`
+      INSERT INTO app_contacts (jid, push_name, phone, synced_at, updated_at)
+      VALUES (${senderJid}, ${pushName}, ${senderJid.includes('@s.whatsapp.net') ? senderJid.split('@')[0] : null}, now(), now())
+      ON CONFLICT (jid) DO UPDATE SET
+        push_name = COALESCE(EXCLUDED.push_name, app_contacts.push_name),
+        updated_at = now()
+    `.catch(() => {});
+  }
 
   // Upsert message — WAHA may deliver both `message` and `message.any`
   const inserted = await db`
@@ -342,33 +352,4 @@ async function handleCallReceived(payload: Record<string, unknown>): Promise<voi
     },
   });
   ssePush('chats', null);
-}
-
-async function handleContacts(payload: Record<string, unknown>): Promise<void> {
-  const db = getDb();
-  // payload.payload could be a single contact or an array
-  const raw = payload.payload as Record<string, unknown> | Record<string, unknown>[] | undefined;
-  if (!raw) return;
-
-  const contacts = Array.isArray(raw) ? raw : [raw];
-
-  for (const c of contacts) {
-    const jid = (c.id as string) || (c.jid as string);
-    if (!jid) continue;
-
-    const pushName = (c.name as string) || (c.pushName as string) || null;
-    const phone = jid.includes('@s.whatsapp.net') ? jid.split('@')[0] : null;
-
-    await db`
-      INSERT INTO app_contacts (jid, phone, push_name, synced_at, updated_at)
-      VALUES (${jid}, ${phone}, ${pushName}, now(), now())
-      ON CONFLICT (jid) DO UPDATE SET
-        phone = COALESCE(EXCLUDED.phone, app_contacts.phone),
-        push_name = COALESCE(EXCLUDED.push_name, app_contacts.push_name),
-        synced_at = now(),
-        updated_at = now()
-    `.catch((e) => logger.error(e, `[webhook] Failed upsert contact ${jid}`));
-  }
-
-  ssePush('contact', null);
 }
