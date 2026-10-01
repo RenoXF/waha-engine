@@ -200,6 +200,8 @@ export default function Sidebar() {
             ))
           )
         ) : (
+          <div className="tab-empty">No status updates</div>
+        )}
       </div>
     </div>
   );
