@@ -94,7 +94,9 @@ export async function syncFromWaha(): Promise<void> {
 
     // 2. Get messages for this chat (last 100)
     try {
-      const msgsRes = await waha.getMessages(session, chatJid, 100) as { data?: any[] } | any[];
+      // downloadMedia=false — history media keys are expired, downloading causes
+      // WAHA to spam reupload requests to the phone (403 / bad decrypt).
+      const msgsRes = await waha.getMessages(session, chatJid, 100, false) as { data?: any[] } | any[];
       const messages = Array.isArray(msgsRes) ? msgsRes : msgsRes?.data || [];
 
       for (const msg of messages) {

@@ -177,8 +177,11 @@ export async function getPnByLid(lid: string, session = config.wahaSessionName) 
   });
 }
 
-export async function getMessages(session: string, chatId: string, limit = 50) {
-  return request({ method: 'GET', path: `/api/${session}/chats/${chatId}/messages?limit=${limit}` });
+export async function getMessages(session: string, chatId: string, limit = 50, downloadMedia = false) {
+  return request({
+    method: 'GET',
+    path: `/api/${session}/chats/${chatId}/messages?limit=${limit}&downloadMedia=${downloadMedia}`,
+  });
 }
 
 // ===== Media =====
