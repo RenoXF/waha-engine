@@ -129,7 +129,7 @@ export async function syncFromWaha(): Promise<void> {
         await db`
           INSERT INTO app_messages (id, chat_jid, from_jid, from_me, message_type, body, wa_timestamp, has_media, media_mime, media_filename, media_size)
           VALUES (${msgId}, ${chatJid}, ${fromJid}, ${fromMe}, ${messageType}, ${body}, ${waTimestamp}, ${hasMedia}, ${mediaMime}, ${mediaFilename}, ${mediaSize})
-          ON CONFLICT (id, chat_jid) DO NOTHING
+          ON CONFLICT (id) DO NOTHING
         `.catch(() => {});
 
         // Update chat preview
