@@ -132,7 +132,7 @@ async function handleMessage(payload: Record<string, unknown>): Promise<void> {
   const inserted = await db`
     INSERT INTO app_messages (id, chat_jid, from_jid, from_me, message_type, body, wa_timestamp, has_media, media_mime, media_filename, media_size)
     VALUES (${id}, ${chatJid}, ${msg.from as string || null}, ${fromMe}, ${messageType}, ${body}, ${waTimestamp}, ${hasMedia}, ${mediaMime}, ${mediaFilename}, ${mediaSize})
-    ON CONFLICT (id) DO UPDATE SET
+    ON CONFLICT (id, chat_jid) DO UPDATE SET
       body = EXCLUDED.body,
       has_media = EXCLUDED.has_media,
       media_mime = EXCLUDED.media_mime,

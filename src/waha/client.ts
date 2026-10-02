@@ -154,7 +154,9 @@ export async function getChats(session = config.wahaSessionName) {
 }
 
 export async function getContacts(session = config.wahaSessionName) {
-  return request({ method: 'GET', path: `/api/${session}/contacts` });
+  // WAHA 2026.9.x: contacts list is at /api/contacts/all?session=X
+  // (the /api/:session/contacts route only has GET /:id and PUT /:chatId)
+  return request({ method: 'GET', path: `/api/contacts/all?session=${session}` });
 }
 
 export async function getGroups(session = config.wahaSessionName) {
