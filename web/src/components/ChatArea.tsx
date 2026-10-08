@@ -1,8 +1,29 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { Virtuoso } from 'react-virtuoso';
 import { chatStore, Message } from '../stores/chatStore';
+import { contactStore } from '../stores/contactStore';
+import { uiStore } from '../stores/uiStore';
 import { api } from '../api/client';
+import { useDisplayName, resolveName } from '../hooks/useDisplayName';
 import Avatar from './Avatar';
 import EmojiPicker from './EmojiPicker';
+
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+function formatSize(bytes?: number | null): string {
+  if (!bytes) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function messageTypeForFile(file: File): Message['message_type'] {
+  const mime = file.type;
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  return 'document';
+}
 
 function formatTime(ts: string) {
   return new Date(ts).toLocaleTimeString('id-ID', {
@@ -33,16 +54,86 @@ function DatePill({ date }: { date: string }) {
   );
 }
 
-function TickIcon({ read }: { read: boolean }) {
+function formatFullTime(ts: string | null | undefined): string {
+  if (!ts) return '';
+  return new Date(ts).toLocaleString('id-ID', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+/* Real delivery status: pending → sent → delivered → read, failed → retry */
+function StatusIcon({ msg }: { msg: Message }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = () => setOpen(false);
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  if (!msg.from_me) return null;
+
+  if (msg.status === 'pending') {
+    return (
+      <span className="tick tick-pending" title="Sending">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (msg.status === 'failed') {
+    return (
+      <span className="tick tick-failed" title="Failed to send">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 8v4M12 16h.01" />
+        </svg>
+      </span>
+    );
+  }
+
+  const read = msg.status === 'read';
+  const double = msg.status === 'delivered' || read;
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill={read ? 'var(--tick-read)' : 'var(--tick-sent)'}
-    >
-      <path d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z" />
-    </svg>
+    <span className="tick-wrap" onMouseDown={(e) => e.stopPropagation()}>
+      <button
+        className={`tick tick-btn ${read ? 'tick-read' : ''}`}
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        aria-label="Message info"
+        type="button"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+          <path
+            d={
+              double
+                ? 'M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z'
+                : 'M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7z'
+            }
+          />
+        </svg>
+      </button>
+      {open && (
+        <div className="tick-popover">
+          {msg.sent_at && (
+            <div className="tick-popover-row"><span>Sent</span><span>{formatFullTime(msg.sent_at)}</span></div>
+          )}
+          {msg.delivered_at && (
+            <div className="tick-popover-row"><span>Delivered</span><span>{formatFullTime(msg.delivered_at)}</span></div>
+          )}
+          {msg.read_at && (
+            <div className="tick-popover-row"><span>Read</span><span>{formatFullTime(msg.read_at)}</span></div>
+          )}
+          {!msg.sent_at && !msg.delivered_at && !msg.read_at && (
+            <div className="tick-popover-row"><span>Status</span><span>{msg.status || 'sent'}</span></div>
+          )}
+        </div>
+      )}
+    </span>
   );
 }
 
@@ -52,7 +143,7 @@ function FloatMeta({ msg }: { msg: Message }) {
     <span className="msg-meta">
       {msg.is_edited && <span className="msg-edited">edited</span>}
       <span className="msg-time">{formatTime(msg.wa_timestamp)}</span>
-      {msg.from_me && <TickIcon read={!!msg.from_me} />}
+      <StatusIcon msg={msg} />
     </span>
   );
 }
@@ -63,12 +154,12 @@ function OverlayMeta({ msg }: { msg: Message }) {
     <span className="msg-media-overlay">
       {msg.is_edited && <span className="msg-media-overlay-edited">edited</span>}
       <span>{formatTime(msg.wa_timestamp)}</span>
-      {msg.from_me && <TickIcon read={!!msg.from_me} />}
+      <StatusIcon msg={msg} />
     </span>
   );
 }
 
-function MessageBubble({ msg }: { msg: Message }) {
+function MessageBubble({ msg, onRetry }: { msg: Message; onRetry: (msg: Message) => void }) {
   if (msg.is_deleted) {
     return (
       <div className="msg-deleted">
@@ -84,11 +175,18 @@ function MessageBubble({ msg }: { msg: Message }) {
 
   const isCallNotification = msg.message_type === 'call_notification';
 
-  const hasVisualMedia =
-    msg.has_media &&
-    msg.message_type !== 'text' &&
-    msg.message_type !== 'reaction' &&
-    !isCallNotification;
+  const mediaKind: 'image' | 'video' | 'audio' | 'document' | null =
+    msg.has_media && !isCallNotification && msg.message_type !== 'reaction'
+      ? msg.message_type === 'image' || msg.message_type === 'sticker'
+        ? 'image'
+        : msg.message_type === 'video'
+          ? 'video'
+          : msg.message_type === 'audio'
+            ? 'audio'
+            : 'document'
+      : null;
+
+  const hasVisualMedia = mediaKind === 'image' || mediaKind === 'video';
 
   const isNonVisualType =
     !msg.has_media &&
@@ -98,6 +196,7 @@ function MessageBubble({ msg }: { msg: Message }) {
 
   const hasCaption = !!msg.body && !isCallNotification;
   const isMediaOnly = hasVisualMedia && !hasCaption;
+  const mediaSrc = `/files/download/${msg.id}`;
 
   return (
     <div className={`msg-row ${msg.from_me ? 'msg-row-out' : 'msg-row-in'}`}>
@@ -105,7 +204,23 @@ function MessageBubble({ msg }: { msg: Message }) {
         <div
           className={`msg-bubble ${msg.from_me ? 'msg-bubble-out' : 'msg-bubble-in'} ${hasVisualMedia ? 'msg-bubble-media' : ''} ${isMediaOnly ? 'msg-bubble-media-only' : ''}`}
         >
-          {msg.quoted_id && <div className="msg-quoted">Reply</div>}
+          {msg.quoted_id && (
+            <div className="msg-quoted">
+              <span className="msg-quoted-name">
+                {msg.quoted_from_me
+                  ? 'You'
+                  : msg.quoted_from_jid
+                    ? resolveName(msg.quoted_from_jid)
+                    : ''}
+              </span>
+              <span className="msg-quoted-text">
+                {msg.quoted_deleted
+                  ? 'Pesan ini dihapus'
+                  : msg.quoted_body ||
+                    (msg.quoted_type && msg.quoted_type !== 'text' ? `[${msg.quoted_type}]` : '…')}
+              </span>
+            </div>
+          )}
 
           {/* ── Call notification ── */}
           {isCallNotification && (
@@ -116,19 +231,54 @@ function MessageBubble({ msg }: { msg: Message }) {
               <span>{msg.body}</span>
             </div>
           )}
-          {hasVisualMedia && (
+          {mediaKind === 'image' && (
             <div className="msg-media-container">
               <img
-                src={`/files/download/${msg.id}`}
-                alt="media"
+                src={mediaSrc}
+                alt={msg.media_filename || 'media'}
                 className="msg-media-img"
                 loading="lazy"
+                onClick={() =>
+                  uiStore.getState().openModal('mediaViewer', {
+                    src: mediaSrc,
+                    type: msg.media_mime || 'image/jpeg',
+                    name: msg.media_filename || 'Photo',
+                  })
+                }
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.opacity = '0.3';
                 }}
               />
               {isMediaOnly && <OverlayMeta msg={msg} />}
             </div>
+          )}
+          {mediaKind === 'video' && (
+            <div className="msg-media-container">
+              <video src={mediaSrc} controls preload="metadata" className="msg-media-img" />
+              {isMediaOnly && <OverlayMeta msg={msg} />}
+            </div>
+          )}
+          {mediaKind === 'audio' && (
+            <div className="msg-audio-wrap">
+              <audio src={mediaSrc} controls preload="metadata" className="msg-audio" />
+              {!hasCaption && <OverlayMeta msg={msg} />}
+            </div>
+          )}
+          {mediaKind === 'document' && (
+            <a
+              href={mediaSrc}
+              download={msg.media_filename || undefined}
+              className="msg-doc-card"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <svg className="msg-doc-icon" width="30" height="30" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z" />
+              </svg>
+              <span className="msg-doc-info">
+                <span className="msg-doc-name">{msg.media_filename || 'Document'}</span>
+                <span className="msg-doc-size">{formatSize(msg.media_size)}</span>
+              </span>
+            </a>
           )}
 
           {/* ── Non-visual type without file (link, document, etc.) ── */}
@@ -154,6 +304,18 @@ function MessageBubble({ msg }: { msg: Message }) {
 
         {/* Action bar */}
         <div className="msg-action-bar">
+          {msg.from_me && msg.status === 'failed' && (
+            <button
+              className="msg-action-btn msg-action-retry"
+              onClick={() => onRetry(msg)}
+              title="Retry send"
+              aria-label="Retry send"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-8 8s3.57 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
+              </svg>
+            </button>
+          )}
           <button
             className="msg-action-btn"
             onClick={() =>
@@ -184,25 +346,53 @@ export default function ChatArea() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const prevLenRef = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Virtuoso prepend bookkeeping: keep scroll anchored when older pages load
+  const FIRST_ITEM_INDEX = 10_000;
+  const [firstItemIndex, setFirstItemIndex] = useState(FIRST_ITEM_INDEX);
+  const prevFirstIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (messages.length > prevLenRef.current && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-    prevLenRef.current = messages.length;
-  }, [messages.length]);
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      requestAnimationFrame(() => {
-        if (scrollRef.current)
-          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      });
-    }
+    setFirstItemIndex(FIRST_ITEM_INDEX);
+    prevFirstIdRef.current = null;
   }, [currentChat]);
+
+  useEffect(() => {
+    const firstId = messages[0]?.id ?? null;
+    const prev = prevFirstIdRef.current;
+    if (firstId && prev && firstId !== prev) {
+      const addedBefore = messages.findIndex((m) => m.id === prev);
+      if (addedBefore > 0) setFirstItemIndex((fi) => Math.max(fi - addedBefore, 1));
+    }
+    prevFirstIdRef.current = firstId;
+  }, [messages]);
+
+  const filePreview = useMemo(
+    () => (pendingFile && pendingFile.type.startsWith('image/') ? URL.createObjectURL(pendingFile) : null),
+    [pendingFile],
+  );
+
+  const dateKeys = useMemo(() => {
+    const seen = new Set<string>();
+    return messages.map((m) => {
+      const d = new Date(m.wa_timestamp).toDateString();
+      if (seen.has(d)) return false;
+      seen.add(d);
+      return true;
+    });
+  }, [messages]);
+
+  const displayName = useDisplayName(currentChat);
+  const groups = contactStore((s) => s.groups);
+  const contacts = contactStore((s) => s.contacts);
+  const group = currentChat ? groups.find((g) => g.group_jid === currentChat) : undefined;
+  const contact = currentChat ? contacts.find((c) => c.jid === currentChat) : undefined;
+  const headerSubtitle = group
+    ? `${group.participant_count ?? 0} participants`
+    : contact?.about || 'tap here for contact info';
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
@@ -212,34 +402,134 @@ export default function ChatArea() {
   }, []);
 
   const handleSend = async () => {
-    if (!input.trim() || !currentChat || sending) return;
-    setSending(true);
+    if ((!input.trim() && !pendingFile) || !currentChat || sending) return;
     const text = input;
+    const file = pendingFile;
+    setSending(true);
     setInput('');
+    setPendingFile(null);
     if (textareaRef.current) textareaRef.current.style.height = '42px';
+
+    if (file) {
+      const tempId = crypto.randomUUID();
+      const chatJid = currentChat;
+      const optimistic: Message = {
+        id: tempId,
+        chat_jid: chatJid,
+        from_jid: null,
+        from_me: true,
+        participant: null,
+        message_type: messageTypeForFile(file),
+        body: text.trim() || null,
+        quoted_id: null,
+        forwarded: false,
+        is_starred: false,
+        has_media: true,
+        media_path: null,
+        media_mime: file.type,
+        media_url: null,
+        media_filename: file.name,
+        media_size: file.size,
+        is_edited: false,
+        is_deleted: false,
+        status: 'pending',
+        wa_timestamp: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      };
+      chatStore.getState().addMessage(optimistic);
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('recipient', chatJid);
+      if (text.trim()) fd.append('caption', text.trim());
+      fd.append('clientTempId', tempId);
+      try {
+        const res = await api.sendMedia(fd);
+        chatStore.getState().updateMessage(tempId, { id: res.data.messageId, status: 'sent' });
+      } catch (err) {
+        chatStore.getState().removeMessage(tempId);
+        setInput(text);
+        setPendingFile(file);
+        uiStore.getState().showToast('Failed to send media', 'error');
+        console.error(err);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    // Text: optimistic bubble with clientTempId, id reconciled from response
+    const tempId = crypto.randomUUID();
+    const chatJid = currentChat;
+    const nowIso = new Date().toISOString();
+    const optimistic: Message = {
+      id: tempId,
+      chat_jid: chatJid,
+      from_jid: null,
+      from_me: true,
+      participant: null,
+      message_type: 'text',
+      body: text,
+      quoted_id: null,
+      forwarded: false,
+      is_starred: false,
+      has_media: false,
+      media_path: null,
+      media_mime: null,
+      media_url: null,
+      media_filename: null,
+      is_edited: false,
+      is_deleted: false,
+      status: 'pending',
+      wa_timestamp: nowIso,
+      created_at: nowIso,
+    };
+    chatStore.getState().addMessage(optimistic);
     try {
-      await api.sendText(currentChat, text);
+      const res = await api.sendText(chatJid, text, tempId);
+      chatStore.getState().updateMessage(tempId, { id: res.data.messageId, status: 'sent' });
     } catch (err) {
-      setInput(text);
+      chatStore.getState().updateMessage(tempId, { status: 'failed' });
+      uiStore.getState().showToast('Failed to send message', 'error');
       console.error(err);
     } finally {
       setSending(false);
     }
   };
 
-  const datesRef = useRef<Set<string>>(new Set());
-  datesRef.current.clear();
+  const retryMessage = useCallback(async (msg: Message) => {
+    if (msg.status !== 'failed' || !msg.body) return;
+    chatStore.getState().updateMessage(msg.id, { status: 'pending' });
+    try {
+      const res = await api.sendText(msg.chat_jid, msg.body, msg.id);
+      chatStore.getState().updateMessage(msg.id, { id: res.data.messageId, status: 'sent' });
+    } catch (err) {
+      chatStore.getState().updateMessage(msg.id, { status: 'failed' });
+      uiStore.getState().showToast('Retry failed', 'error');
+      console.error(err);
+    }
+  }, []);
 
-  const hasInput = input.trim().length > 0;
+  const onFilePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    if (f.size > MAX_UPLOAD_BYTES) {
+      uiStore.getState().showToast('File too large (max 50MB)', 'error');
+      return;
+    }
+    setPendingFile(f);
+  };
+
+  const hasInput = input.trim().length > 0 || !!pendingFile;
 
   return (
     <div className="flex-1 flex flex-col h-full">
       {/* Header */}
       <div className="chat-header">
-        <Avatar name={currentChat || ''} size="md" />
+        <Avatar name={displayName || currentChat || ''} size="md" />
         <div className="chat-header-info">
-          <div className="chat-header-name">{currentChat}</div>
-          <div className="chat-header-status">tap here for contact info</div>
+          <div className="chat-header-name">{displayName || currentChat}</div>
+          <div className="chat-header-status">{headerSubtitle}</div>
         </div>
         <div className="chat-header-actions">
           <button className="btn-icon" style={{ color: 'var(--text-secondary)' }} title="Video call">
@@ -273,25 +563,62 @@ export default function ChatArea() {
             </div>
           </div>
         ) : (
-          <div className="msg-scroll" ref={scrollRef}>
-            <div className="encrypt-notice">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM15.1 8H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>
-              Messages and calls are end-to-end encrypted. No one outside of this chat, not even WhatsApp, can read or listen to them.
-            </div>
-            {messages.map((msg) => {
-              const msgDate = new Date(msg.wa_timestamp).toDateString();
-              const showDate = !datesRef.current.has(msgDate);
-              if (showDate) datesRef.current.add(msgDate);
+          <Virtuoso
+            key={currentChat}
+            className="msg-scroll"
+            style={{ height: '100%' }}
+            data={messages}
+            firstItemIndex={firstItemIndex}
+            initialTopMostItemIndex={Math.max(messages.length - 1, 0)}
+            startReached={() => { void chatStore.getState().loadMore(); }}
+            followOutput={(isAtBottom) => (isAtBottom ? 'smooth' : false)}
+            components={{
+              Header: () => (
+                <div className="encrypt-notice">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM15.1 8H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>
+                  Messages and calls are end-to-end encrypted. No one outside of this chat, not even WhatsApp, can read or listen to them.
+                </div>
+              ),
+            }}
+            itemContent={(absIndex) => {
+              // Virtuoso passes absolute indexes: firstItemIndex + position
+              const index = absIndex - firstItemIndex;
+              const msg = messages[index];
+              if (!msg) return null;
               return (
-                <div key={msg.id} className="msg-item">
-                  {showDate && <DatePill date={msg.wa_timestamp} />}
-                  <MessageBubble msg={msg} />
+                <div className="msg-item" data-id={msg.id}>
+                  {dateKeys[index] && <DatePill date={msg.wa_timestamp} />}
+                  <MessageBubble msg={msg} onRetry={retryMessage} />
                 </div>
               );
-            })}
-          </div>
+            }}
+          />
         )}
       </div>
+
+      {/* Attachment preview chip */}
+      {pendingFile && (
+        <div className="attach-chip">
+          {filePreview ? (
+            <img src={filePreview} alt="" className="attach-chip-thumb" />
+          ) : (
+            <div className="attach-chip-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z" />
+              </svg>
+            </div>
+          )}
+          <div className="attach-chip-info">
+            <div className="attach-chip-name">{pendingFile.name}</div>
+            <div className="attach-chip-size">{formatSize(pendingFile.size)}</div>
+          </div>
+          <button className="attach-chip-remove" onClick={() => setPendingFile(null)} aria-label="Remove attachment">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Input bar */}
       <div className="chat-input-bar">
@@ -305,14 +632,27 @@ export default function ChatArea() {
           <textarea
             ref={textareaRef}
             className="chat-textarea"
-            placeholder="Type a message"
+            placeholder={pendingFile ? 'Add a caption' : 'Type a message'}
             value={input}
             onChange={(e) => { setInput(e.target.value); autoResize(); }}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
             rows={1}
           />
         </div>
-        <button className="btn-icon" style={{ color: 'var(--text-secondary)' }} title="Attach">
+        <input
+          ref={fileInputRef}
+          type="file"
+          hidden
+          accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+          onChange={onFilePicked}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="btn-icon"
+          style={{ color: 'var(--text-secondary)' }}
+          title="Attach"
+          aria-label="Attach file"
+        >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>
         </button>
         <button onClick={handleSend} disabled={!hasInput || sending} className={`send-btn ${hasInput ? 'send-btn-active' : ''}`}>

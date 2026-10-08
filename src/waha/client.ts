@@ -121,20 +121,26 @@ export async function sendText(session: string, body: { chatId: string; text: st
   return request({ method: 'POST', path: `/api/sendText`, body: { session, ...body } });
 }
 
-export async function sendImage(session: string, body: { chatId: string; file: string; caption?: string }) {
-  return request({ method: 'POST', path: `/api/sendImage`, body: { session, ...body } });
+// WAHA's fileToMessage requires an object ({url} or {data}); a plain string throws a TypeError.
+export type WahaFile = string | { url: string; mimetype?: string; filename?: string };
+function filePayload(file: WahaFile) {
+  return typeof file === 'string' ? { url: file } : file;
 }
 
-export async function sendFile(session: string, body: { chatId: string; file: string; filename?: string }) {
-  return request({ method: 'POST', path: `/api/sendFile`, body: { session, ...body } });
+export async function sendImage(session: string, body: { chatId: string; file: WahaFile; caption?: string }) {
+  return request({ method: 'POST', path: `/api/sendImage`, body: { session, ...body, file: filePayload(body.file) } });
 }
 
-export async function sendVideo(session: string, body: { chatId: string; file: string; caption?: string }) {
-  return request({ method: 'POST', path: `/api/sendVideo`, body: { session, ...body } });
+export async function sendFile(session: string, body: { chatId: string; file: WahaFile; filename?: string; caption?: string }) {
+  return request({ method: 'POST', path: `/api/sendFile`, body: { session, ...body, file: filePayload(body.file) } });
 }
 
-export async function sendVoice(session: string, body: { chatId: string; file: string }) {
-  return request({ method: 'POST', path: `/api/sendVoice`, body: { session, ...body } });
+export async function sendVideo(session: string, body: { chatId: string; file: WahaFile; caption?: string }) {
+  return request({ method: 'POST', path: `/api/sendVideo`, body: { session, ...body, file: filePayload(body.file) } });
+}
+
+export async function sendVoice(session: string, body: { chatId: string; file: WahaFile }) {
+  return request({ method: 'POST', path: `/api/sendVoice`, body: { session, ...body, file: filePayload(body.file) } });
 }
 
 // ===== Read / Presence =====

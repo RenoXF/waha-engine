@@ -13,7 +13,7 @@ const TYPE_MAP: Record<string, string> = {
   'application/pdf': 'document',
 };
 
-function getMediaType(mime: string | null): string {
+export function getMediaType(mime: string | null): string {
   if (!mime) return 'document';
   for (const [prefix, type] of Object.entries(TYPE_MAP)) {
     if (mime.startsWith(prefix)) return type;
@@ -21,7 +21,7 @@ function getMediaType(mime: string | null): string {
   return 'document';
 }
 
-function getExtension(mime: string | null): string {
+export function getExtension(mime: string | null): string {
   if (!mime) return 'bin';
   const ext: Record<string, string> = {
     'image/jpeg': 'jpg',
@@ -36,6 +36,20 @@ function getExtension(mime: string | null): string {
     'application/pdf': 'pdf',
   };
   return ext[mime] || 'bin';
+}
+
+const ALLOWED_DIRS = ['picture', 'video', 'audio', 'document', 'contact_avatar'];
+
+/** Write a file into Media/{type}/ and return the DB-relative path. */
+export async function storeLocalFile(mediaType: string, filename: string, data: Blob): Promise<string> {
+  if (!ALLOWED_DIRS.includes(mediaType)) throw new Error(`Invalid media type: ${mediaType}`);
+  if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+    throw new Error(`Invalid filename: ${filename}`);
+  }
+  const dir = join(MEDIA_DIR, mediaType);
+  await mkdir(dir, { recursive: true });
+  await Bun.write(join(dir, filename), data);
+  return `Media/${mediaType}/${filename}`;
 }
 
 export async function downloadAndStoreMedia(messageId: string, mediaUrl: string, mediaMime: string | null): Promise<void> {

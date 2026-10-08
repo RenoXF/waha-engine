@@ -3,9 +3,11 @@ import { chatStore } from '../stores/chatStore';
 import { uiStore } from '../stores/uiStore';
 import { authStore } from "../stores/authStore";
 import { sessionStore } from "../stores/sessionStore";
+import { contactStore } from "../stores/contactStore";
 import { api } from '../api/client';
 import Avatar from './Avatar';
 import FilterButtons from './FilterButtons';
+import { resolveName } from '../hooks/useDisplayName';
 
 type TabType = 'chats' | 'status' | 'calls';
 
@@ -42,6 +44,9 @@ export default function Sidebar() {
   const openModal = uiStore((s) => s.openModal);
   const logout = authStore((s) => s.logout);
   const sessionState = sessionStore((s) => s.state);
+  // subscribed so resolveName() re-runs once contacts/groups arrive
+  const contacts = contactStore((s) => s.contacts);
+  void contacts;
 
   useEffect(() => {
     if (activeTab === 'calls') {
@@ -95,13 +100,11 @@ export default function Sidebar() {
             </button>
             {showMenu && (
               <div className="menu-dropdown">
-                <button className="menu-item" onClick={() => { setShowMenu(false); openModal('newChat'); }}>New group</button>
-                <button className="menu-item" onClick={() => { setShowMenu(false); openModal('starred'); }}>Starred messages</button>
-                <button className="menu-item" onClick={() => { setShowMenu(false); openModal('archived'); }}>Archived</button>
-                <button className="menu-item" onClick={() => { setShowMenu(false); }}>Select chats</button>
-                <button className="menu-item" onClick={() => { setShowMenu(false); }}>Mute notifications</button>
-                <div className="menu-divider" />
-                <button className="menu-item" onClick={() => { setShowMenu(false); openModal('settings'); }}>Settings</button>
+              <div className="menu-divider" />
+              <button className="menu-item" onClick={() => { setShowMenu(false); openModal('starred'); }}>Starred messages</button>
+              <button className="menu-item" onClick={() => { setShowMenu(false); openModal('archived'); }}>Archived</button>
+              <div className="menu-divider" />
+              <button className="menu-item" onClick={() => { setShowMenu(false); openModal('settings'); }}>Settings</button>
                 <button className="menu-item menu-item-danger" onClick={() => { setShowMenu(false); logout(); }}>Log out</button>
               </div>
             )}
@@ -165,10 +168,10 @@ export default function Sidebar() {
                   onClick={() => chatStore.getState().selectChat(chat.chat_jid)}
                   className={`chat-item ${isActive ? 'chat-item-active' : ''}`}
                 >
-                  <Avatar name={chat.name || chat.chat_jid} size="md" />
+                  <Avatar name={resolveName(chat.chat_jid)} size="md" />
                   <div className="chat-item-body">
                     <div className="chat-item-top">
-                      <span className="chat-item-name">{chat.name || chat.chat_jid}</span>
+                      <span className="chat-item-name">{resolveName(chat.chat_jid)}</span>
                       <span className={`chat-item-time ${chat.unread_count > 0 ? 'chat-item-time-unread' : ''}`}>
                         {chat.last_message_at
                           ? new Date(chat.last_message_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })

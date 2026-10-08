@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { chatStore } from '../stores/chatStore';
+import { contactStore } from '../stores/contactStore';
 import { uiStore } from '../stores/uiStore';
 import Sidebar from './Sidebar';
 import ChatArea from './ChatArea';
@@ -12,15 +13,21 @@ import StarredMessages from './StarredMessages';
 import ArchivedChats from './ArchivedChats';
 import ConnectModal from './ConnectModal';
 import StatusView from './StatusView';
+import Toast from './Toast';
 
 export default function Layout() {
   const currentChat = chatStore((s) => s.currentChat);
   const loadChats = chatStore((s) => s.loadChats);
+  const loadContacts = contactStore((s) => s.loadContacts);
+  const loadGroups = contactStore((s) => s.loadGroups);
   const activeModal = uiStore((s) => s.activeModal);
+  const toast = uiStore((s) => s.toast);
 
   useEffect(() => {
     loadChats();
-  }, [loadChats]);
+    loadContacts().catch(() => {});
+    loadGroups().catch(() => {});
+  }, [loadChats, loadContacts, loadGroups]);
 
   // Clear chat when status view closes → show empty state
   const prevModal = useRef<string | null>(null);
@@ -74,6 +81,13 @@ export default function Layout() {
       {activeModal === 'archived' && <ArchivedChats />}
       {activeModal === 'groupDrawer' && <GroupDrawer />}
       {activeModal === 'mediaViewer' && <MediaViewer />}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => uiStore.getState().clearToast()}
+        />
+      )}
     </div>
   );
 }

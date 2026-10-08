@@ -26,10 +26,17 @@ export function useSSE() {
     es.addEventListener('message_status', (e) => {
       try {
         const data = JSON.parse(e.data);
-        const { messages } = chatStore.getState();
-        const msg = messages.find(m => m.id === data.id);
-        if (msg && data.status === 'sent') {
-          // Message confirmed
+        if (data?.id && data?.status) {
+          chatStore.getState().updateMessage(data.id, { status: data.status });
+        }
+      } catch {}
+    });
+
+    es.addEventListener('message_failed', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data?.messageId) {
+          chatStore.getState().updateMessage(data.messageId, { status: 'failed' });
         }
       } catch {}
     });

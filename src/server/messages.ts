@@ -3,6 +3,103 @@ import { getDb } from '@/db/client';
 import { ssePush } from '@/waha/sse-pubsub';
 import * as waha from '@/waha/client';
 import { config } from '@/config';
+import { getMediaType, getExtension, storeLocalFile } from '@/waha/media';
+
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+const TEMP_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Swap temp id → WAHA id, push `sent`, schedule the 30s pending→failed poll.
+ * Returns the id the message now lives under.
+ */
+async function settleSend(tempId: string, recipient: string, keyId?: string): Promise<string> {
+  const db = getDb();
+  const finalId = keyId || tempId;
+  if (keyId && keyId !== tempId) {
+    await db`UPDATE app_messages SET id = ${keyId} WHERE id = ${tempId}`;
+    await db`UPDATE app_message_status SET message_id = ${keyId} WHERE message_id = ${tempId}`;
+  }
+  if (keyId) {
+    // Record sent in DB too — otherwise the 30s poll can mark a delivered message failed
+    await db`UPDATE app_message_status SET status = 'sent', sent_at = COALESCE(sent_at, now()), updated_at = now() WHERE message_id = ${finalId}`;
+    ssePush('message_status', { id: finalId, chatJid: recipient, status: 'sent' });
+  }
+  setTimeout(async () => {
+    try {
+      const msg = await db`SELECT status FROM app_message_status WHERE message_id = ${finalId} LIMIT 1`;
+      if (msg[0]?.status === 'pending') {
+        await db`UPDATE app_message_status SET status = 'failed', failed_at = now(), updated_at = now() WHERE message_id = ${finalId}`;
+        ssePush('message_failed', { messageId: finalId });
+      }
+    } catch { /* next event or retry will surface it */ }
+  }, 30_000);
+  return finalId;
+}
+
+async function failSend(tempId: string, err: unknown): Promise<void> {
+  const db = getDb();
+  await db`UPDATE app_message_status SET status = 'failed', failed_at = now(), updated_at = now(), error_message = ${String(err)} WHERE message_id = ${tempId}`;
+  ssePush('message_failed', { messageId: tempId });
+}
+
+/** Ensure a pending message row exists (fresh insert, or reset in place on retry). Returns true if fresh. */
+async function ensurePendingText(
+  tempId: string,
+  recipient: string,
+  message: string,
+  now: string,
+  quotedId: string | null,
+): Promise<boolean> {
+  const db = getDb();
+  const existing = await db`SELECT id FROM app_messages WHERE id = ${tempId} LIMIT 1`;
+  if (existing.length > 0) {
+    await db`
+      INSERT INTO app_message_status (message_id, chat_jid, status, pending_at, updated_at)
+      VALUES (${tempId}, ${recipient}, 'pending', now(), now())
+      ON CONFLICT (message_id) DO UPDATE SET
+        status = 'pending', pending_at = now(), failed_at = null, error_message = null, updated_at = now()
+    `;
+    return false;
+  }
+  await db`
+    INSERT INTO app_messages (id, chat_jid, from_me, message_type, body, quoted_id, wa_timestamp)
+    VALUES (${tempId}, ${recipient}, true, 'text', ${message}, ${quotedId}, ${now})
+  `;
+  await db`
+    INSERT INTO app_message_status (message_id, chat_jid, status, pending_at, updated_at)
+    VALUES (${tempId}, ${recipient}, 'pending', now(), now())
+  `;
+  return true;
+}
+
+/** SSE payload matching the webhook `message` shape (snake_case Message). */
+function pushPendingText(tempId: string, recipient: string, message: string, quotedId: string | null, now: string): void {
+  ssePush('message', {
+    chatJid: recipient,
+    message: {
+      id: tempId,
+      chat_jid: recipient,
+      from_jid: null,
+      from_me: true,
+      participant: null,
+      message_type: 'text',
+      body: message,
+      quoted_id: quotedId,
+      forwarded: false,
+      is_starred: false,
+      has_media: false,
+      media_path: null,
+      media_mime: null,
+      media_url: null,
+      media_filename: null,
+      is_edited: false,
+      is_deleted: false,
+      status: 'pending',
+      wa_timestamp: now,
+      created_at: now,
+    },
+  });
+}
 
 export const messageRoutes = new Elysia({ prefix: '/messages' })
   // GET /messages — list chats (exclude broadcast/status)
@@ -88,16 +185,26 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
     let messages;
     if (cursor && cursorId) {
       messages = await db`
-        SELECT * FROM app_messages
-        WHERE chat_jid = ${chatJid} AND (wa_timestamp, id) < (${cursor}, ${cursorId})
-        ORDER BY wa_timestamp DESC, id DESC
+        SELECT m.*, q.body AS quoted_body, q.from_me AS quoted_from_me, q.from_jid AS quoted_from_jid,
+               q.message_type AS quoted_type, q.is_deleted AS quoted_deleted,
+               ms.status, ms.pending_at, ms.sent_at, ms.delivered_at, ms.read_at, ms.failed_at
+        FROM app_messages m
+        LEFT JOIN app_messages q ON q.id = m.quoted_id
+        LEFT JOIN app_message_status ms ON ms.message_id = m.id
+        WHERE m.chat_jid = ${chatJid} AND (m.wa_timestamp, m.id) < (${cursor}, ${cursorId})
+        ORDER BY m.wa_timestamp DESC, m.id DESC
         LIMIT ${limit}
       `;
     } else {
       messages = await db`
-        SELECT * FROM app_messages
-        WHERE chat_jid = ${chatJid}
-        ORDER BY wa_timestamp DESC, id DESC
+        SELECT m.*, q.body AS quoted_body, q.from_me AS quoted_from_me, q.from_jid AS quoted_from_jid,
+               q.message_type AS quoted_type, q.is_deleted AS quoted_deleted,
+               ms.status, ms.pending_at, ms.sent_at, ms.delivered_at, ms.read_at, ms.failed_at
+        FROM app_messages m
+        LEFT JOIN app_messages q ON q.id = m.quoted_id
+        LEFT JOIN app_message_status ms ON ms.message_id = m.id
+        WHERE m.chat_jid = ${chatJid}
+        ORDER BY m.wa_timestamp DESC, m.id DESC
         LIMIT ${limit}
       `;
     }
@@ -108,55 +215,27 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
   // POST /messages/send-text
   .post('/send-text', async ({ request }) => {
     const body = await request.json();
-    const { recipient, message } = body as { recipient: string; message: string };
+    const { recipient, message, clientTempId } = body as { recipient: string; message: string; clientTempId?: string };
 
     if (!recipient || !message) {
       return Response.json({ error: 'recipient and message required' }, { status: 400 });
     }
 
     const session = config.wahaSessionName;
-
-    // Optimistic insert
-    const db = getDb();
-    const tempId = `pending_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const tempId = clientTempId && TEMP_ID_RE.test(clientTempId) ? clientTempId : `pending_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const now = new Date().toISOString();
 
-    await db`
-      INSERT INTO app_messages (id, chat_jid, from_me, message_type, body, wa_timestamp)
-      VALUES (${tempId}, ${recipient}, true, 'text', ${message}, ${now})
-    `;
-    await db`
-      INSERT INTO app_message_status (message_id, chat_jid, status, pending_at, updated_at)
-      VALUES (${tempId}, ${recipient}, 'pending', now(), now())
-    `;
-
-    ssePush('message', { chatJid: recipient, message: { id: tempId, chatJid: recipient, fromMe: true, body: message, messageType: 'text', waTimestamp: now } });
+    const fresh = await ensurePendingText(tempId, recipient, message, now, null);
+    if (fresh) pushPendingText(tempId, recipient, message, null, now);
 
     // Send to WAHA
     try {
       const result = await waha.sendText(session, { chatId: recipient, text: message }) as Record<string, unknown>;
       const key = result.key as Record<string, unknown> | undefined;
-
-      if (key?.id) {
-        // Replace temp ID with real ID
-        await db`UPDATE app_messages SET id = ${key.id as string} WHERE id = ${tempId}`;
-        await db`UPDATE app_message_status SET message_id = ${key.id as string} WHERE message_id = ${tempId}`;
-        ssePush('message_status', { id: key.id, chatJid: recipient, status: 'sent' });
-      }
-
-      // Schedule poll fallback
-      setTimeout(async () => {
-        const msg = await db`SELECT status FROM app_message_status WHERE message_id = ${key?.id as string || tempId} LIMIT 1`;
-        if (msg[0]?.status === 'pending') {
-          await db`UPDATE app_message_status SET status = 'failed', failed_at = now(), updated_at = now() WHERE message_id = ${key?.id as string || tempId}`;
-          ssePush('message_failed', { messageId: key?.id as string || tempId });
-        }
-      }, 30_000);
-
-      return { success: true, data: { messageId: key?.id || tempId } };
+      const finalId = await settleSend(tempId, recipient, key?.id as string | undefined);
+      return { success: true, data: { messageId: finalId } };
     } catch (err) {
-      await db`UPDATE app_message_status SET status = 'failed', failed_at = now(), error_message = ${String(err)}, updated_at = now() WHERE message_id = ${tempId}`;
-      ssePush('message_failed', { messageId: tempId });
+      await failSend(tempId, err);
       return Response.json({ error: String(err) }, { status: 500 });
     }
   })
@@ -164,39 +243,120 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
   // POST /messages/send-reply
   .post('/send-reply', async ({ request }) => {
     const body = await request.json();
-    const { recipient, message, quotedId } = body as { recipient: string; message: string; quotedId: string };
+    const { recipient, message, quotedId, clientTempId } = body as {
+      recipient: string; message: string; quotedId: string; clientTempId?: string;
+    };
 
     if (!recipient || !message) {
       return Response.json({ error: 'recipient and message required' }, { status: 400 });
     }
 
     const session = config.wahaSessionName;
-    const db = getDb();
-    const tempId = `pending_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const tempId = clientTempId && TEMP_ID_RE.test(clientTempId) ? clientTempId : `pending_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const now = new Date().toISOString();
 
-    await db`INSERT INTO app_messages (id, chat_jid, from_me, message_type, body, quoted_id, wa_timestamp) VALUES (${tempId}, ${recipient}, true, 'text', ${message}, ${quotedId}, ${now})`;
-    await db`INSERT INTO app_message_status (message_id, chat_jid, status, pending_at, updated_at) VALUES (${tempId}, ${recipient}, 'pending', now(), now())`;
-    ssePush('message', { chatJid: recipient, message: { id: tempId, chatJid: recipient, fromMe: true, body, messageType: 'text', waTimestamp: now } });
+    const fresh = await ensurePendingText(tempId, recipient, message, now, quotedId || null);
+    if (fresh) pushPendingText(tempId, recipient, message, quotedId || null, now);
 
     try {
       const result = await waha.sendText(session, { chatId: recipient, text: message, replyTo: quotedId }) as Record<string, unknown>;
       const key = result.key as Record<string, unknown> | undefined;
-      if (key?.id) {
-        await db`UPDATE app_messages SET id = ${key.id as string} WHERE id = ${tempId}`;
-        await db`UPDATE app_message_status SET message_id = ${key.id as string} WHERE message_id = ${tempId}`;
-        ssePush('message_status', { id: key.id, chatJid: recipient, status: 'sent' });
-      }
-      setTimeout(async () => {
-        const msg = await db`SELECT status FROM app_message_status WHERE message_id = ${key?.id as string || tempId} LIMIT 1`;
-        if (msg[0]?.status === 'pending') {
-          await db`UPDATE app_message_status SET status = 'failed', failed_at = now(), updated_at = now() WHERE message_id = ${key?.id as string || tempId}`;
-          ssePush('message_failed', { messageId: key?.id as string || tempId });
-        }
-      }, 30_000);
-      return { success: true, data: { messageId: key?.id || tempId } };
+      const finalId = await settleSend(tempId, recipient, key?.id as string | undefined);
+      return { success: true, data: { messageId: finalId } };
     } catch (err) {
-      await db`UPDATE app_message_status SET status = 'failed', failed_at = now(), error_message = ${String(err)}, updated_at = now() WHERE message_id = ${tempId}`;
+      await failSend(tempId, err);
+      return Response.json({ error: String(err) }, { status: 500 });
+    }
+  })
+
+  // POST /messages/send-media — multipart: file, recipient, caption?, clientTempId?
+  .post('/send-media', async ({ request }) => {
+    const form = await request.formData();
+    const file = form.get('file');
+    const recipient = String(form.get('recipient') || '').trim();
+    const captionRaw = String(form.get('caption') || '').trim();
+    const clientTempId = String(form.get('clientTempId') || '');
+
+    if (!(file instanceof File)) return Response.json({ error: 'file required' }, { status: 400 });
+    if (!recipient) return Response.json({ error: 'recipient required' }, { status: 400 });
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return Response.json({ error: 'File too large (max 50MB)' }, { status: 413 });
+    }
+
+    const tempId = TEMP_ID_RE.test(clientTempId) ? clientTempId : `pending_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const mime = file.type || 'application/octet-stream';
+    const mediaType = getMediaType(mime); // picture|video|audio|document
+    const messageType = mediaType === 'picture' ? 'image' : mediaType;
+    const caption = captionRaw || null;
+    const originalName = (file.name || 'file').replace(/[^\w.\- ()]/g, '_').slice(0, 120);
+    const filename = `${tempId}.${getExtension(mime)}`;
+    const session = config.wahaSessionName;
+    const db = getDb();
+    const now = new Date().toISOString();
+
+    // 1. Store file first so /files/download/:id resolves as soon as the row exists
+    let relativePath: string;
+    try {
+      relativePath = await storeLocalFile(mediaType, filename, file);
+    } catch (e) {
+      return Response.json({ error: String(e) }, { status: 500 });
+    }
+
+    // 2. Optimistic insert (snake_case SSE — same shape as webhook)
+    await db`
+      INSERT INTO app_messages (id, chat_jid, from_me, message_type, body, wa_timestamp, has_media, media_path, media_mime, media_filename, media_size)
+      VALUES (${tempId}, ${recipient}, true, ${messageType}, ${caption}, ${now}, true, ${relativePath}, ${mime}, ${originalName}, ${file.size})
+    `;
+    await db`
+      INSERT INTO app_message_status (message_id, chat_jid, status, pending_at, updated_at)
+      VALUES (${tempId}, ${recipient}, 'pending', now(), now())
+    `;
+    ssePush('message', {
+      chatJid: recipient,
+      message: {
+        id: tempId,
+        chat_jid: recipient,
+        from_jid: null,
+        from_me: true,
+        participant: null,
+        message_type: messageType,
+        body: caption,
+        quoted_id: null,
+        forwarded: false,
+        is_starred: false,
+        has_media: true,
+        media_path: relativePath,
+        media_mime: mime,
+        media_url: null,
+        media_filename: originalName,
+        is_edited: false,
+        is_deleted: false,
+        status: 'pending',
+        wa_timestamp: now,
+        created_at: now,
+      },
+    });
+    ssePush('chats', null);
+
+    // 3. Hand to WAHA — it fetches the file from our own /files route
+    const fileUrl = `http://127.0.0.1:${config.port}/files/${mediaType}/${filename}`;
+    const payload = { url: fileUrl, mimetype: mime, filename: originalName };
+    try {
+      let result: unknown;
+      if (mime.startsWith('image/')) {
+        result = await waha.sendImage(session, { chatId: recipient, file: payload, caption: caption || undefined });
+      } else if (mime.startsWith('video/')) {
+        result = await waha.sendVideo(session, { chatId: recipient, file: payload, caption: caption || undefined });
+      } else if (mime === 'audio/ogg' || mime === 'audio/opus') {
+        result = await waha.sendVoice(session, { chatId: recipient, file: payload });
+      } else {
+        result = await waha.sendFile(session, { chatId: recipient, file: payload, filename: originalName, caption: caption || undefined });
+      }
+      const key = (result as Record<string, unknown> | undefined)?.key as Record<string, unknown> | undefined;
+      const finalId = await settleSend(tempId, recipient, key?.id as string | undefined);
+      return { success: true, data: { messageId: finalId } };
+    } catch (err) {
+      await failSend(tempId, err);
       return Response.json({ error: String(err) }, { status: 500 });
     }
   })

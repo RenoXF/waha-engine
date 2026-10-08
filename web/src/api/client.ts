@@ -1,9 +1,50 @@
 const BASE = '';
 
+export interface ApiResp<T> {
+  success: boolean;
+  data: T;
+}
+
+export interface CallRow {
+  id: string;
+  chat_jid: string;
+  from_jid: string;
+  body: string;
+  wa_timestamp: string;
+  display_name: string;
+}
+
+export interface StatusRow {
+  id: string;
+  from_jid: string;
+  body: string | null;
+  message_type: string;
+  has_media: boolean;
+  media_mime: string | null;
+  media_path: string | null;
+  wa_timestamp: string;
+  display_name: string;
+}
+
+export interface ParticipantRow {
+  participant_jid: string;
+  is_admin: boolean;
+  push_name: string | null;
+  avatar_path: string | null;
+}
+
+export interface UserRow {
+  id: string;
+  username: string;
+  role: string;
+  is_active: boolean;
+}
+
 async function request<T = unknown>(path: string, options?: RequestInit): Promise<T> {
+  const isForm = options?.body instanceof FormData;
   const res = await fetch(`${BASE}${path}`, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: { ...(isForm ? {} : { 'Content-Type': 'application/json' }), ...options?.headers },
     ...options,
   });
 
@@ -37,12 +78,20 @@ export const api = {
     if (cursor && cursorId) url += `&cursor=${cursor}&cursorId=${cursorId}`;
     return request(url);
   },
-  getCalls: () => request('/messages/calls'),
-  getStatuses: () => request('/messages/status'),
-  sendText: (recipient: string, message: string) =>
-    request('/messages/send-text', { method: 'POST', body: JSON.stringify({ recipient, message }) }),
-  sendReply: (recipient: string, message: string, quotedId: string) =>
-    request('/messages/send-reply', { method: 'POST', body: JSON.stringify({ recipient, message, quotedId }) }),
+  getCalls: () => request<ApiResp<CallRow[]>>('/messages/calls'),
+  getStatuses: () => request<ApiResp<StatusRow[]>>('/messages/status'),
+  sendText: (recipient: string, message: string, clientTempId?: string) =>
+    request<{ success: boolean; data: { messageId: string } }>('/messages/send-text', {
+      method: 'POST',
+      body: JSON.stringify({ recipient, message, clientTempId }),
+    }),
+  sendReply: (recipient: string, message: string, quotedId: string, clientTempId?: string) =>
+    request<{ success: boolean; data: { messageId: string } }>('/messages/send-reply', {
+      method: 'POST',
+      body: JSON.stringify({ recipient, message, quotedId, clientTempId }),
+    }),
+  sendMedia: (form: FormData) =>
+    request<{ success: boolean; data: { messageId: string } }>('/messages/send-media', { method: 'POST', body: form }),
   deleteMessage: (messageId: string, chatJid: string) =>
     request('/messages/delete', { method: 'POST', body: JSON.stringify({ messageId, chatJid }) }),
   editMessage: (messageId: string, chatJid: string, message: string) =>
@@ -59,10 +108,10 @@ export const api = {
 
   // Groups
   getGroups: () => request('/groups'),
-  getGroupParticipants: (id: string) => request(`/groups/${id}/participants`),
+  getGroupParticipants: (id: string) => request<ApiResp<ParticipantRow[]>>(`/groups/${id}/participants`),
 
   // Users
-  getUsers: () => request('/users'),
+  getUsers: () => request<ApiResp<UserRow[]>>('/users'),
   createUser: (username: string, password: string, role?: string) =>
     request('/users', { method: 'POST', body: JSON.stringify({ username, password, role }) }),
 

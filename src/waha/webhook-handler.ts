@@ -212,16 +212,24 @@ async function handleAck(payload: Record<string, unknown>): Promise<void> {
   const status = statusMap[ack] || 'sent';
 
   await db`
-    INSERT INTO app_message_status (message_id, chat_jid, status, ${status}_at, updated_at)
-    VALUES (${id}, ${chatJid || ''}, ${status}, now(), now())
+    INSERT INTO app_message_status AS ms (message_id, chat_jid, status, sent_at, delivered_at, read_at, updated_at)
+    VALUES (
+      ${id}, ${chatJid || ''}, ${status},
+      CASE WHEN ${status} = 'sent' THEN now() END,
+      CASE WHEN ${status} = 'delivered' THEN now() END,
+      CASE WHEN ${status} = 'read' THEN now() END,
+      now()
+    )
     ON CONFLICT (message_id) DO UPDATE SET
-      status = GREATEST(app_message_status.status, EXCLUDED.status),
-      ${status}_at = COALESCE(app_message_status.${status}_at, now()),
+      status = CASE
+        WHEN COALESCE(ARRAY_POSITION(ARRAY['pending','sent','delivered','read'], ms.status), 0)
+           < COALESCE(ARRAY_POSITION(ARRAY['pending','sent','delivered','read'], EXCLUDED.status), 0)
+        THEN EXCLUDED.status ELSE ms.status END,
+      sent_at = COALESCE(ms.sent_at, EXCLUDED.sent_at, CASE WHEN EXCLUDED.status IN ('delivered','read') THEN now() END),
+      delivered_at = COALESCE(ms.delivered_at, EXCLUDED.delivered_at, CASE WHEN EXCLUDED.status = 'read' THEN now() END),
+      read_at = COALESCE(ms.read_at, EXCLUDED.read_at),
       updated_at = now()
-  `.catch(() => {
-    // Fallback: just update status
-    db`UPDATE app_message_status SET status = ${status}, updated_at = now() WHERE message_id = ${id}`;
-  });
+  `;
 
   ssePush('message_status', { id, chatJid, status });
 }

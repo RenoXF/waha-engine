@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../api/client';
+import { uiStore } from './uiStore';
 
 export interface Chat {
   chat_jid: string;
@@ -23,6 +24,11 @@ export interface Message {
   message_type: string;
   body: string | null;
   quoted_id: string | null;
+  quoted_body?: string | null;
+  quoted_from_me?: boolean | null;
+  quoted_from_jid?: string | null;
+  quoted_type?: string | null;
+  quoted_deleted?: boolean | null;
   forwarded: boolean;
   is_starred: boolean;
   has_media: boolean;
@@ -30,8 +36,15 @@ export interface Message {
   media_mime: string | null;
   media_url: string | null;
   media_filename: string | null;
+  media_size?: number | null;
   is_edited: boolean;
   is_deleted: boolean;
+  status?: string | null;
+  pending_at?: string | null;
+  sent_at?: string | null;
+  delivered_at?: string | null;
+  read_at?: string | null;
+  failed_at?: string | null;
   wa_timestamp: string;
   created_at: string;
 }
@@ -45,6 +58,7 @@ export const chatStore = create<{
   selectChat: (jid: string) => Promise<void>;
   clearChat: () => void;
   loadMore: () => Promise<void>;
+  loadingMore: boolean;
   addMessage: (msg: Message) => void;
   updateMessage: (id: string, updates: Partial<Message>) => void;
   removeMessage: (id: string) => void;
@@ -53,28 +67,47 @@ export const chatStore = create<{
   currentChat: null,
   messages: [],
   loading: false,
+  loadingMore: false,
 
   loadChats: async () => {
-    const { data } = await api.getChats() as { data: Chat[] };
-    set({ chats: data });
+    try {
+      const { data } = await api.getChats() as { data: Chat[] };
+      set({ chats: data });
+    } catch {
+      // keep previous list; SSE will retry on next event
+    }
   },
 
   selectChat: async (jid) => {
     set({ currentChat: jid, messages: [], loading: true });
-    const { data } = await api.getMessages(jid) as { data: Message[] };
-    set({ messages: data, loading: false });
-    api.markRead(jid).catch(() => {});
+    try {
+      const { data } = await api.getMessages(jid) as { data: Message[] };
+      if (get().currentChat !== jid) return; // user switched away
+      set({ messages: data, loading: false });
+      api.markRead(jid).catch(() => {});
+    } catch {
+      if (get().currentChat !== jid) return;
+      set({ loading: false });
+      uiStore.getState().showToast('Failed to load messages', 'error');
+    }
   },
 
   clearChat: () => set({ currentChat: null, messages: [], loading: false }),
 
   loadMore: async () => {
-    const { currentChat, messages } = get();
-    if (!currentChat || messages.length === 0) return;
+    const { currentChat, messages, loadingMore } = get();
+    if (!currentChat || messages.length === 0 || loadingMore) return;
     const oldest = messages[0];
-    const { data } = await api.getMessages(currentChat, 50, oldest.wa_timestamp, oldest.id) as { data: Message[] };
-    if (data.length > 0) {
-      set({ messages: [...data, ...messages] });
+    set({ loadingMore: true });
+    try {
+      const { data } = await api.getMessages(currentChat, 50, oldest.wa_timestamp, oldest.id) as { data: Message[] };
+      if (data.length > 0 && get().currentChat === currentChat) {
+        set({ messages: [...data, ...get().messages] });
+      }
+    } catch {
+      // scroll retry happens on next startReached
+    } finally {
+      set({ loadingMore: false });
     }
   },
 
