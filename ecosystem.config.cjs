@@ -1,4 +1,4 @@
-const { dirname } = require('path');
+const { dirname, join } = require('path');
 
 const ROOT = __dirname;
 const NODE_BIN = dirname(process.execPath);
@@ -11,11 +11,14 @@ module.exports = {
       // NestJS ConfigModule memuat .env. Tanpa itu WAHA_API_KEY diabaikan
       // dan semua endpoint balas 401.
       node_args: '--env-file=.env',
-      script: 'dist/main',
+      // pm2 resolve script relatif ke cwd proses pm2, bukan cwd app.
+      script: join(ROOT, 'src/engine/waha/dist/main.js'),
       interpreter: 'node',
       cwd: './src/engine/waha',
       env: { PATH: `${NODE_BIN}:${process.env.PATH}` },
-      max_memory_restart: '500M',
+      // WAHA + session WA consuming ~600MB. Batas 500M bikin pm2 restart-loop
+      // tiap beberapa menit -> session WhatsApp putus-nyambung.
+      max_memory_restart: '1G',
       autorestart: true,
     },
     {
