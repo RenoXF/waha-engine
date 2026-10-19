@@ -74,7 +74,7 @@ export const sessionRoutes = new Elysia({ prefix: '/session' })
     }
   })
 
-  // POST /session/stop
+  // POST /session/stop — disconnect: hentikan session, device tetap linked
   .post('/stop', async () => {
     try {
       await waha.stopSession();
@@ -85,12 +85,30 @@ export const sessionRoutes = new Elysia({ prefix: '/session' })
     }
   })
 
-  // POST /session/logout
+  // POST /session/logout — reset total: unlink device, hapus cache lokal WAHA,
+  // lalu buat ulang session dengan config dari .env supaya bisa langsung scan QR.
+  // Database Postgres (chats, messages, contacts) tidak disentuh.
   .post('/logout', async () => {
+    const name = config.wahaSessionName;
     try {
-      await waha.logoutSession();
-      ssePush('device_state', { state: 'LOGGED_OUT' });
-      return { success: true };
+      try {
+        await waha.logoutSession();
+      } catch (e) {
+        logger.info(`[session] logout: ${String(e).slice(0, 100)}`);
+      }
+
+      // Delete juga menghapus folder .sessions/<engine>/<name> di sisi WAHA,
+      // jadi auth keys lama hilang dan session tidak auto-reconnect.
+      try {
+        await waha.deleteSession(name);
+      } catch (e) {
+        logger.info(`[session] delete: ${String(e).slice(0, 100)}`);
+      }
+
+      await waha.createSession(name);
+      const started = await waha.startSession(name);
+      ssePush('device_state', { state: 'SCAN_QR_CODE' });
+      return { success: true, data: started };
     } catch (err) {
       return Response.json({ error: String(err) }, { status: 500 });
     }

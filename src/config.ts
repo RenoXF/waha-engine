@@ -15,6 +15,12 @@ export const config = {
   wahaBaseUrl: process.env.WAHA_BASE_URL || 'http://localhost:3000',
   wahaApiKey: process.env.WAHA_API_KEY || '',
   wahaSessionName: process.env.WAHA_SESSION_NAME || 'default',
+  // Config yang dipasang saat session dibuat. NOWEB butuh store aktif kalau
+  // tidak semua endpoint chat membalas 400. Disimpan di .env supaya session
+  // yang dibuat ulang (mis. setelah logout) tidak kehilangan config ini.
+  wahaSessionConfig: JSON.parse(
+    process.env.WAHA_SESSION_CONFIG || '{"noweb":{"store":{"enabled":true,"fullSync":true}}}'
+  ) as Record<string, unknown>,
 
   // Webhook
   webhookHmacKey: process.env.WEBHOOK_HMAC_KEY || '',

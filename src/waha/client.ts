@@ -49,7 +49,15 @@ export async function getSession(session = config.wahaSessionName) {
 }
 
 export async function createSession(session = config.wahaSessionName) {
-  return request({ method: 'POST', path: '/api/sessions', body: { name: session } });
+  return request({
+    method: 'POST',
+    path: '/api/sessions',
+    body: { name: session, config: config.wahaSessionConfig },
+  });
+}
+
+export async function deleteSession(session = config.wahaSessionName) {
+  return request({ method: 'DELETE', path: `/api/sessions/${session}` });
 }
 
 export async function restartSession(session = config.wahaSessionName) {
