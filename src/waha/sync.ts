@@ -80,11 +80,14 @@ export async function syncFromWaha(): Promise<void> {
 
     // 73% kontak dari WAHA datang berjid @lid, bukan @s.whatsapp.net, jadi
     // kolom phone di atas tetap null. Isi dari mapping yang baru synced.
+    // WAHA menyimpan pn sebagai '628123456789@c.us' — sufiks harus dibuang,
+    // kolom phone hanya boleh berisi nomor.
     await db`
       UPDATE app_contacts c
-      SET phone = m.pn, updated_at = now()
+      SET phone = split_part(m.pn, '@', 1), updated_at = now()
       FROM app_lid_pn_mapping m
-      WHERE c.jid = m.lid AND c.phone IS NULL AND m.pn IS NOT NULL
+      WHERE c.jid = m.lid AND m.pn IS NOT NULL
+        AND (c.phone IS NULL OR c.phone LIKE '%@%')
     `;
     // postgres.js tidak mengembalikan jumlah baris untuk UPDATE, jadi hitung
     // sisa yang belum punya phone.
