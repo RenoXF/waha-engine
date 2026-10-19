@@ -3,7 +3,7 @@ import { join } from 'path';
 import { stat } from 'fs/promises';
 import { getDb } from '@/db/client';
 
-const LOCAL_MEDIA_DIR = join(import.meta.dir, '../../waha/.media');
+const LOCAL_MEDIA_DIR = join(import.meta.dir, '../../engine/waha/.media');
 const APP_MEDIA_DIR = join(import.meta.dir, '../../Media');
 const ALLOWED_TYPES = ['picture', 'video', 'audio', 'document', 'contact_avatar'];
 

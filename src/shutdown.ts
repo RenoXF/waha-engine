@@ -7,7 +7,10 @@ export function registerShutdown(): void {
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
+
     logger.info(`[shutdown] ${signal} received, closing...`);
+    logger.flush();
+
     try {
       await closeDb();
       process.exit(0);

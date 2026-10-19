@@ -29,10 +29,7 @@ async function main() {
   // 5. Start server
   const { createServer } = await import('@/server');
   const server = createServer();
-
-  server.listen({ port: config.port, hostname: config.host }, () => {
-    logger.info(`[boot] ✓ Server running at http://${config.host}:${config.port}`);
-  });
+  logger.info(`[boot] ✓ Server running at http://${config.host}:${config.port}`);
 
   // 6. Periodic sync every 5 minutes (contacts, LID mapping, chats)
   new Cron('*/5 * * * *', async () => {

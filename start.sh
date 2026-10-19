@@ -1,55 +1,22 @@
 #!/bin/bash
-# WAHA Engine - Start all services
-# Usage: ./start.sh [waha|api|web|all]
+# WAHA Engine - pm2 wrapper
+# Usage: ./start.sh [start|stop|restart|logs|status]
 
 set -e
+cd "$(cd "$(dirname "$0")" && pwd)"
 
-DIR="$(cd "$(dirname "$0")" && pwd)"
-NVM_DIR="$HOME/.nvm"
-NODE_BIN="/home/iamraf/.nvm/versions/node/v24.15.0/bin"
+# src/web/dist di-ignore git, jadi wajib build sebelum serve.
+# API menyajikan halaman kosong kalau dist tidak ada.
+if [ "$1" = "start" ] || [ "$1" = "restart" ] || [ $# -eq 0 ]; then
+  echo "Building web..."
+  (cd src/web && bun install --silent && bun run build)
+fi
 
-start_waha() {
-  echo "Starting WAHA (port 3000)..."
-  cd "$DIR/waha"
-  bash run.sh &
-  echo "WAHA started (PID: $!)"
-}
-
-start_api() {
-  echo "Starting API (port 4000)..."
-  cd "$DIR"
-  PORT=4000 bun run src/index.ts &
-  echo "API started (PID: $!)"
-}
-
-start_web() {
-  echo "Starting Frontend (port 5173)..."
-  cd "$DIR/web"
-  bun run dev &
-  echo "Frontend started (PID: $!)"
-}
-
-case "${1:-all}" in
-  waha) start_waha ;;
-  api)  start_api ;;
-  web)  start_web ;;
-  all)
-    start_waha
-    sleep 3
-    start_api
-    sleep 2
-    start_web
-    echo ""
-    echo "═══════════════════════════════════════"
-    echo "  WAHA Engine"
-    echo "  WAHA:     http://localhost:3000"
-    echo "  API:      http://localhost:4000"
-    echo "  Frontend: http://localhost:5173"
-    echo "  Login:    admin / admin123"
-    echo "═══════════════════════════════════════"
-    echo ""
-    echo "Press Ctrl+C to stop all..."
-    wait
-    ;;
-  *) echo "Usage: $0 [waha|api|web|all]"; exit 1 ;;
+case "${1:-start}" in
+  start)   pm2 start ecosystem.config.cjs ;;
+  stop)    pm2 stop ecosystem.config.cjs ;;
+  restart) pm2 restart ecosystem.config.cjs ;;
+  logs)    pm2 logs ;;
+  status)  pm2 status ;;
+  *)       echo "Usage: $0 [start|stop|restart|logs|status]"; exit 1 ;;
 esac

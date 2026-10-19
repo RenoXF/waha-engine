@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "bun --watch run src/index.ts",
     "start": "bun run src/index.ts",
-    "start:all": "bash start.sh all",
-    "start:waha": "bash start.sh waha",
-    "start:web": "bash start.sh web",
+    "start:all": "bash start.sh start",
+    "stop": "bash start.sh stop",
+    "logs": "bash start.sh logs",
     "test": "bun test",
     "db:migrate": "bun -e \"import('./src/db/migrate').then(m => m.migrate())\"",
     "db:seed": "bun -e \"import('./src/db/seed').then(s => s.seed())\"",

@@ -32,5 +32,8 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  // src/engine/waha = submodule pihak ketiga (NestJS + dist). Scan-nya menambah
+  // 8898 error tanpasepele. src/web punya tsconfig sendiri, di-build via Vite.
+  "exclude": ["node_modules", "src/engine", "src/web"]
 }
