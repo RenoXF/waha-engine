@@ -66,6 +66,21 @@ export async function syncFromWaha(): Promise<void> {
         ON CONFLICT (lid) DO UPDATE SET pn = EXCLUDED.pn, updated_at = now()
       `.catch((e) => logger.warn(e, `[sync] insert lid ${m.lid} gagal`));
     }
+
+    // 73% kontak dari WAHA datang berjid @lid, bukan @s.whatsapp.net, jadi
+    // kolom phone di atas tetap null. Isi dari mapping yang baru synced.
+    await db`
+      UPDATE app_contacts c
+      SET phone = m.pn, updated_at = now()
+      FROM app_lid_pn_mapping m
+      WHERE c.jid = m.lid AND c.phone IS NULL AND m.pn IS NOT NULL
+    `;
+    // postgres.js tidak mengembalikan jumlah baris untuk UPDATE, jadi hitung
+    // sisa yang belum punya phone.
+    const missing = await db<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM app_contacts WHERE phone IS NULL
+    `;
+    logger.info(`[sync] Contacts without phone after LID join: ${missing[0]?.n ?? '?'}`);
   } catch (e) {
     logger.error(e, '[sync] Failed to sync LID mappings');
   }
