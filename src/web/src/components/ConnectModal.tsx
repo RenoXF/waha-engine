@@ -44,6 +44,17 @@ export default function ConnectModal() {
       else setErr('QR belum tersedia, klik Start untuk memulai session');
     } catch (e) {
       const msg = String(e).replace(/^Error:\s*/, '');
+      if (msg.includes('not as expected')) {
+        // WAHA balas 422 kalau QR diminta saat session sudah tidak SCAN_QR_CODE.
+        // Terjadi antara cek status di atas dan pemanggilan getQR — sesi sudah
+        // nyambung duluan. Tanya ulang status daripada tampilkan error.
+        try {
+          const s = await api.getSession() as { data: { state?: string; status?: string } };
+          const state = s.data?.state || s.data?.status || 'UNKNOWN';
+          sessionStore.getState().setState(state);
+          if (state === 'WORKING') { setQr(null); setErr(''); return; }
+        } catch { /* gagal tanya ulang, tampilkan error aslinya */ }
+      }
       if (msg.includes('WORKING')) {
         // Already connected
         sessionStore.getState().setState('WORKING');
@@ -176,10 +187,36 @@ export default function ConnectModal() {
         <div className="modal-body">
           {sessionState === 'WORKING' ? (
             <ConnectedState
+              busy={loading}
               onDisconnect={async () => {
-                await api.stopSession().catch(() => {});
-                close();
+                setLoading(true);
+                setErr('');
+                try {
+                  await api.stopSession();
+                  await fetchSession();
+                  close();
+                } catch (e) {
+                  setErr(String(e).replace(/^Error:\s*/, ''));
+                } finally {
+                  setLoading(false);
+                }
               }}
+              onLogout={async () => {
+                if (!window.confirm('Logout akan memutus device ini dari WhatsApp. Kamu harus scan QR ulang untuk reconnect. Lanjutkan?')) return;
+                setLoading(true);
+                setErr('');
+                try {
+                  await api.logoutSession();
+                  sessionStore.getState().setState('STOPPED');
+                  setQr(null);
+                  setTab('qr');
+                } catch (e) {
+                  setErr(String(e).replace(/^Error:\s*/, ''));
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              err={err}
             />
           ) : tab === 'qr' ? (
             <QRTab
@@ -209,7 +246,17 @@ export default function ConnectModal() {
 }
 
 /* ── Connected ── */
-function ConnectedState({ onDisconnect }: { onDisconnect: () => void }) {
+function ConnectedState({
+  busy,
+  onDisconnect,
+  onLogout,
+  err,
+}: {
+  busy: boolean;
+  onDisconnect: () => void;
+  onLogout: () => void;
+  err: string;
+}) {
   return (
     <div className="text-center" style={{ padding: '16px 0' }}>
       <div className="connect-success-icon">
@@ -219,13 +266,54 @@ function ConnectedState({ onDisconnect }: { onDisconnect: () => void }) {
       </div>
       <div className="connect-success-title">Connected</div>
       <div className="connect-success-desc">WhatsApp linked</div>
-      <button
-        className="modal-btn modal-btn-secondary"
-        style={{ marginTop: 16, width: '100%' }}
-        onClick={onDisconnect}
+
+      <div className="flex gap-2" style={{ marginTop: 16 }}>
+        <button
+          className="modal-btn modal-btn-secondary flex-1"
+          onClick={onDisconnect}
+          disabled={busy}
+        >
+          {busy ? 'Working...' : 'Disconnect'}
+        </button>
+        <button
+          className="modal-btn flex-1"
+          style={{
+            background: 'rgba(234,67,53,0.12)',
+            color: 'var(--danger)',
+            border: '1px solid rgba(234,67,53,0.2)',
+          }}
+          onClick={onLogout}
+          disabled={busy}
+        >
+          Logout
+        </button>
+      </div>
+
+      <div
+        className="text-[11px] leading-relaxed"
+        style={{ color: 'var(--text-secondary)', marginTop: 10 }}
       >
-        Disconnect
-      </button>
+        Disconnect menghentikan session, device tetap linked. Logout memutus device
+        dari WhatsApp dan butuh scan QR ulang.
+      </div>
+
+      {err && (
+        <div className="modal-error">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 8v4M12 16h.01" />
+          </svg>
+          <span>{err}</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -121,6 +121,7 @@ export const api = {
   startSession: (body?: Record<string, unknown>) =>
     request('/session/start', { method: 'POST', body: JSON.stringify(body ?? {}) }),
   stopSession: () => request('/session/stop', { method: 'POST' }),
+  logoutSession: () => request('/session/logout', { method: 'POST' }),
   requestPairingCode: (phoneNumber: string) =>
     request('/session/pairing-code', { method: 'POST', body: JSON.stringify({ phoneNumber }) }),
 
