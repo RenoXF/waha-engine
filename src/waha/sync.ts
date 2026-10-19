@@ -46,7 +46,7 @@ export async function syncFromWaha(): Promise<void> {
           push_name = COALESCE(EXCLUDED.push_name, app_contacts.push_name),
           synced_at = now(),
           updated_at = now()
-      `.catch(() => {});
+      `.catch((e) => logger.warn(e, `[sync] insert contact ${jid} gagal`));
     }
   } catch (e) {
     logger.error(e, '[sync] Failed to sync contacts');
@@ -64,7 +64,7 @@ export async function syncFromWaha(): Promise<void> {
         INSERT INTO app_lid_pn_mapping (lid, pn, updated_at)
         VALUES (${m.lid}, ${m.pn}, now())
         ON CONFLICT (lid) DO UPDATE SET pn = EXCLUDED.pn, updated_at = now()
-      `.catch(() => {});
+      `.catch((e) => logger.warn(e, `[sync] insert lid ${m.lid} gagal`));
     }
   } catch (e) {
     logger.error(e, '[sync] Failed to sync LID mappings');
@@ -130,7 +130,7 @@ export async function syncFromWaha(): Promise<void> {
           INSERT INTO app_messages (id, chat_jid, from_jid, from_me, message_type, body, wa_timestamp, has_media, media_mime, media_filename, media_size)
           VALUES (${msgId}, ${chatJid}, ${fromJid}, ${fromMe}, ${messageType}, ${body}, ${waTimestamp}, ${hasMedia}, ${mediaMime}, ${mediaFilename}, ${mediaSize})
           ON CONFLICT (id) DO NOTHING
-        `.catch(() => {});
+        `.catch((e) => logger.warn(e, `[sync] insert message ${msgId} gagal`));
 
         // Update chat preview
         if (body) {
@@ -141,7 +141,7 @@ export async function syncFromWaha(): Promise<void> {
               last_message_preview = ${body.substring(0, 100)},
               updated_at = now()
             WHERE chat_jid = ${chatJid}
-          `.catch(() => {});
+          `.catch((e) => logger.warn(e, `[sync] update preview ${chatJid} gagal`));
         }
       }
 
