@@ -2,6 +2,7 @@ export const config = {
   // Server
   port: Number(process.env.PORT || 4000),
   host: process.env.HOST || '0.0.0.0',
+  nodeEnv: process.env.NODE_ENV || 'development',
 
   // Database
   databaseUrl: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/waha_engine',

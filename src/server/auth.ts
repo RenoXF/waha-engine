@@ -1,5 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { createToken, verifyToken, hashPassword, verifyPassword } from '@/auth';
+import { readToken } from '@/auth/session';
 import { checkRateLimit, recordFailure } from '@/auth/rate-limit';
 import { getDb } from '@/db/client';
 import { config } from '@/config';
@@ -73,7 +74,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
 
   // GET /auth/me
   .get('/me', async ({ request, cookie: { waha_session } }) => {
-    const token = waha_session.value || new URL(request.url).searchParams.get('token');
+    const token = readToken(request, waha_session.value);
     if (!token) {
       return Response.json({ error: 'Not authenticated' }, { status: 401 });
     }

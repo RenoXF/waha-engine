@@ -1,11 +1,12 @@
 import { Elysia } from 'elysia';
 import { verifyToken } from '@/auth';
+import { readToken } from '@/auth/session';
 import { subscribeSse, getBufferedEvents } from '@/waha/sse-pubsub';
 
 export const sseRoutes = new Elysia()
   .get('/sse/live', async ({ request, cookie: { waha_session } }) => {
     // Auth: cookie first, then ?token=
-    const token = waha_session.value || new URL(request.url).searchParams.get('token');
+    const token = readToken(request, waha_session.value);
     if (!token) {
       return new Response('Unauthorized', { status: 401 });
     }

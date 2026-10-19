@@ -1,5 +1,6 @@
 import { Elysia } from 'elysia';
 import { verifyToken } from '@/auth';
+import { readToken } from '@/auth/session';
 import { logger } from '@/logger';
 
 // Route yang boleh tanpa login:
@@ -21,10 +22,7 @@ export const authGuard = new Elysia({ name: 'auth-guard' }).onBeforeHandle(
   async ({ path, request, cookie: { waha_session }, status }) => {
     if (covers(path, PUBLIC_PREFIXES)) return;
 
-    const cookieToken = waha_session?.value;
-    const token =
-      (typeof cookieToken === 'string' ? cookieToken : null) ||
-      new URL(request.url).searchParams.get('token');
+    const token = readToken(request, waha_session?.value);
     const user = token ? await verifyToken(token) : null;
 
     if (!user) {
