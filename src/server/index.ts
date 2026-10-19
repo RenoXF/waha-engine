@@ -12,6 +12,7 @@ import { groupRoutes } from './groups';
 import { filesRoutes } from './files';
 import { userRoutes } from './users';
 import { presenceRoutes } from './presence';
+import { authGuard } from './auth-guard';
 
 // ponytail: manual static serve karena @elysiajs/static ketimpa .get('/*').
 // Naik ke staticPlugin + onAfterHandle 404->index.html kalau Elysia expose onNotFound.
@@ -21,16 +22,7 @@ const INDEX_HTML = Bun.file(join(WEB_DIST, 'index.html'));
 export function createServer() {
   return new Elysia()
     .use(cors({ origin: config.corsOrigins, credentials: true }))
-    .use(authRoutes)
-    .use(webhookRoutes)
-    .use(sseRoutes)
-    .use(sessionRoutes)
-    .use(messageRoutes)
-    .use(contactRoutes)
-    .use(groupRoutes)
-    .use(filesRoutes)
-    .use(userRoutes)
-    .use(presenceRoutes)
+    .get('/health', () => ({ status: 'ok', uptime: process.uptime() }))
     .get('/*', async ({ request }) => {
       const raw = decodeURIComponent(new URL(request.url).pathname);
       const full = join(WEB_DIST, normalize(raw));
@@ -46,6 +38,17 @@ export function createServer() {
         headers: { 'content-type': 'text/html; charset=utf-8' },
       });
     })
-    .get('/health', () => ({ status: 'ok', uptime: process.uptime() }))
+    // Semua route API di bawah wajib login. Letakkan route baru setelah baris ini.
+    .use(authGuard)
+    .use(authRoutes)
+    .use(webhookRoutes)
+    .use(sseRoutes)
+    .use(sessionRoutes)
+    .use(messageRoutes)
+    .use(contactRoutes)
+    .use(groupRoutes)
+    .use(filesRoutes)
+    .use(userRoutes)
+    .use(presenceRoutes)
     .listen(config.port, () => console.log(`Server running at port ${config.port}`));
 }
