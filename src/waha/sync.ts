@@ -96,7 +96,50 @@ export async function syncFromWaha(): Promise<void> {
     logger.error(e, '[sync] Failed to sync LID mappings');
   }
 
-  // 1. Get chat list
+  // 1. Sync groups + participants (WAHA balas object ber-key, bukan array)
+  try {
+    const groupsRes = await waha.getGroups(session) as Record<string, any> | any[];
+    const groups = Array.isArray(groupsRes)
+      ? groupsRes
+      : Object.values(groupsRes || {});
+    logger.info(`[sync] Found ${groups.length} groups`);
+
+    for (const g of groups) {
+      const groupJid = g.id || g.jid;
+      if (!groupJid) continue;
+
+      await db`
+        INSERT INTO app_groups (group_jid, subject, description, owner_jid, participant_count, updated_at)
+        VALUES (${groupJid}, ${g.subject ?? null}, ${g.description ?? null}, ${g.owner ?? null}, ${g.size ?? 0}, now())
+        ON CONFLICT (group_jid) DO UPDATE SET
+          subject = COALESCE(EXCLUDED.subject, app_groups.subject),
+          description = COALESCE(EXCLUDED.description, app_groups.description),
+          owner_jid = COALESCE(EXCLUDED.owner_jid, app_groups.owner_jid),
+          participant_count = EXCLUDED.participant_count,
+          updated_at = now()
+      `.catch((e) => logger.warn(e, `[sync] upsert group ${groupJid} gagal`));
+
+      try {
+        const parts = await waha.getGroupParticipants(session, groupJid);
+        const list = Array.isArray(parts) ? parts : [];
+        for (const p of list) {
+          const pJid = p.id;
+          if (!pJid) continue;
+          await db`
+            INSERT INTO app_group_participants (group_jid, participant_jid, is_admin)
+            VALUES (${groupJid}, ${pJid}, ${p.admin === true})
+            ON CONFLICT (group_jid, participant_jid) DO UPDATE SET is_admin = EXCLUDED.is_admin
+          `.catch((e) => logger.warn(e, `[sync] insert participant ${pJid} gagal`));
+        }
+      } catch (e) {
+        logger.warn(e, `[sync] participants ${groupJid} gagal`);
+      }
+    }
+  } catch (e) {
+    logger.error(e, '[sync] Failed to sync groups');
+  }
+
+  // 2. Get chat list
   const chatsRes = await waha.getChats(session) as { data?: any[] } | any[];
   const chats = Array.isArray(chatsRes) ? chatsRes : chatsRes?.data || [];
 
@@ -118,7 +161,7 @@ export async function syncFromWaha(): Promise<void> {
         updated_at = now()
     `.catch((e) => logger.error(e, `[sync] Failed upsert chat ${chatJid}`));
 
-    // 2. Get messages for this chat (last 100)
+    // 2b. Get messages for this chat (last 100)
     try {
       // downloadMedia=false — history media keys are expired, downloading causes
       // WAHA to spam reupload requests to the phone (403 / bad decrypt).

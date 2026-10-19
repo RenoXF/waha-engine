@@ -177,6 +177,13 @@ export async function getGroups(session = config.wahaSessionName) {
   return request({ method: 'GET', path: `/api/${session}/groups` });
 }
 
+export async function getGroupParticipants(session: string, groupId: string) {
+  return request<Array<{ id: string; phoneNumber?: string; admin?: boolean | null }>>({
+    method: 'GET',
+    path: `/api/${session}/groups/${groupId}/participants`,
+  });
+}
+
 // ===== LID ↔ Phone Number mapping =====
 
 export async function getAllLids(session = config.wahaSessionName, limit = 1000) {
