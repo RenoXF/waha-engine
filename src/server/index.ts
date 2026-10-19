@@ -36,7 +36,12 @@ export function createServer() {
       const full = join(WEB_DIST, normalize(raw));
       if (!full.startsWith(WEB_DIST)) return new Response('forbidden', { status: 403 });
       const file = Bun.file(full);
-      if (normalize(raw) !== '/' && (await file.exists())) return new Response(file);
+      // content-type wajib eksplisit: plugin cors() Elysia menstrip header yang
+      // di-infer otomatis dari BunFile, hasilnya module script ditolak browser
+      // ("Expected a JavaScript-or-Wasm module script").
+      if (normalize(raw) !== '/' && (await file.exists())) {
+        return new Response(file, { headers: { 'content-type': file.type } });
+      }
       return new Response(INDEX_HTML, {
         headers: { 'content-type': 'text/html; charset=utf-8' },
       });
