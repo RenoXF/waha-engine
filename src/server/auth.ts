@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { createToken, verifyToken, hashPassword, verifyPassword } from '@/auth';
-import { checkRateLimit } from '@/auth/rate-limit';
+import { checkRateLimit, recordFailure } from '@/auth/rate-limit';
 import { getDb } from '@/db/client';
 import { config } from '@/config';
 import { logger } from '@/logger';
@@ -8,20 +8,21 @@ import { logger } from '@/logger';
 export const authRoutes = new Elysia({ prefix: '/auth' })
   // POST /auth/login
   .post('/login', async ({ request, cookie: { waha_session } }) => {
-    const ip = request.headers.get('x-forwarded-for') || 'unknown';
-    const { ok, retryAfterMs } = checkRateLimit(ip);
-    if (!ok) {
-      return Response.json(
-        { error: 'Too many attempts', retryAfterMs },
-        { status: 429 }
-      );
-    }
-
     const body = await request.json();
     const { username, password } = body as { username: string; password: string };
 
     if (!username || !password) {
       return Response.json({ error: 'Username and password required' }, { status: 400 });
+    }
+
+    // Kunci per username, bukan per IP: semua cabang kantor datang lewat satu
+    // egress, jadi limit per-IP membuat 5 salah ketik mengunci 3 kantor.
+    const { ok, retryAfterMs } = checkRateLimit(username.toLowerCase());
+    if (!ok) {
+      return Response.json(
+        { error: 'Too many attempts', retryAfterMs },
+        { status: 429 }
+      );
     }
 
     const db = getDb();
@@ -31,6 +32,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     `;
 
     if (users.length === 0) {
+      recordFailure(username.toLowerCase());
       return Response.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
@@ -41,6 +43,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
 
     const valid = await verifyPassword(password, user.password_hash);
     if (!valid) {
+      recordFailure(username.toLowerCase());
       return Response.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 

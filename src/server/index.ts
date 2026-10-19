@@ -20,7 +20,7 @@ const INDEX_HTML = Bun.file(join(WEB_DIST, 'index.html'));
 
 export function createServer() {
   return new Elysia()
-    .use(cors({ credentials: true }))
+    .use(cors({ origin: config.corsOrigins, credentials: true }))
     .use(authRoutes)
     .use(webhookRoutes)
     .use(sseRoutes)

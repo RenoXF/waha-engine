@@ -21,4 +21,12 @@ export const config = {
   // Admin
   defaultAdminUsername: process.env.DEFAULT_ADMIN_USERNAME || 'admin',
   defaultAdminPassword: process.env.DEFAULT_ADMIN_PASSWORD || 'admin123',
+
+  // CORS. Production is same-origin (API menyajikan SPA dari port yang sama),
+  // jadi ini cuma kepakai saat dev `bunx vite` di 5173.
+  // Jangan pernah '*' dengan credentials:true — browser menolaknya per spec.
+  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean),
 } as const;
