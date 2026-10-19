@@ -35,8 +35,19 @@ export async function syncFromWaha(): Promise<void> {
     for (const c of contacts) {
       const jid = c.id || c.jid;
       if (!jid) continue;
-      const pushName = c.name || c.pushName || null;
-      const phone = jid.includes('@s.whatsapp.net') ? jid.split('@')[0] : null;
+      // WAHA kirim 'pushname' (p kecil) dan 'phoneNumber' — bukan 'pushName'.
+      const pushName = c.name || c.pushname || null;
+      // WAHA memakai tiga bentuk jid: @s.whatsapp.net, @c.us (nomor asli),
+      // dan @lid (identifier opaque, BUKAN nomor telepon). Dua yang pertama
+      // adalah nomor asli dan harus diparse; @lid tidak bisa.
+      const [idPart, suffix = ''] = jid.split('@');
+      const fromJid = suffix === 'c.us' || suffix === 's.whatsapp.net' ? idPart : null;
+      // phoneNumber dari WAHA lebih akurat daripada mem-parse jid: tersedia
+      // juga untuk kontak @lid yang jid-nya bukan nomor.
+      const fromPhoneNumber = c.phoneNumber
+        ? String(c.phoneNumber).split('@')[0]
+        : null;
+      const phone = fromPhoneNumber || fromJid;
 
       await db`
         INSERT INTO app_contacts (jid, phone, push_name, synced_at, updated_at)
