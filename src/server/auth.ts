@@ -74,7 +74,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
 
   // GET /auth/me
   .get('/me', async ({ request, cookie: { waha_session } }) => {
-    const token = readToken(request, waha_session.value);
+    const token = readToken(request, waha_session?.value);
     if (!token) {
       return Response.json({ error: 'Not authenticated' }, { status: 401 });
     }
