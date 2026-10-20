@@ -1,6 +1,5 @@
 import { Elysia } from 'elysia';
-import { verifyToken } from '@/auth';
-import { readToken } from '@/auth/session';
+import { tokenIsValid } from '@/auth';
 import { logger } from '@/logger';
 
 // Route yang boleh tanpa login:
@@ -9,9 +8,6 @@ import { logger } from '@/logger';
 // SPA statis di-register SEBELUM guard ini, jadi tidak ikut kena.
 const PUBLIC_PREFIXES = ['/auth', '/webhook'];
 
-// Manage user hanya untuk admin.
-const ADMIN_PREFIXES = ['/users'];
-
 const covers = (path: string, prefixes: string[]) =>
   prefixes.some((p) => path === p || path.startsWith(p + '/'));
 
@@ -19,20 +15,11 @@ const covers = (path: string, prefixes: string[]) =>
 // terlindungi. Kalau nambah route API baru, taruh setelah baris itu.
 export const authGuard = new Elysia({ name: 'auth-guard' }).onBeforeHandle(
   { as: 'scoped' },
-  async ({ path, request, cookie: { waha_session }, status }) => {
+  ({ path, request, cookie: { waha_session }, status }) => {
     if (covers(path, PUBLIC_PREFIXES)) return;
+    if (tokenIsValid(waha_session?.value)) return;
 
-    const token = readToken(request, waha_session?.value);
-    const user = token ? await verifyToken(token) : null;
-
-    if (!user) {
-      logger.warn(`[auth] 401 ${request.method} ${path}`);
-      return status(401, { error: 'Unauthorized' });
-    }
-
-    if (covers(path, ADMIN_PREFIXES) && user.role !== 'admin') {
-      logger.warn(`[auth] 403 ${request.method} ${path} role=${user.role}`);
-      return status(403, { error: 'Forbidden' });
-    }
+    logger.warn(`[auth] 401 ${request.method} ${path}`);
+    return status(401, { error: 'Unauthorized' });
   }
 );

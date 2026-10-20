@@ -2,38 +2,14 @@ export const config = {
   // Server
   port: Number(process.env.PORT || 4000),
   host: process.env.HOST || '0.0.0.0',
-  nodeEnv: process.env.NODE_ENV || 'development',
 
-  // Database
-  databaseUrl: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/waha_engine',
+  // Single-VM, single shared login. Ganti lewat .env kalau perlu.
+  appPassword: process.env.APP_PASSWORD || 'change-me',
 
-  // JWT
-  jwtSecret: process.env.JWT_SECRET || 'change-me-to-random-string',
-  jwtExpiry: process.env.JWT_EXPIRY || '7d',
+  // Database. Kredensial asli ada di .env (gitignored), jangan di source.
+  databaseUrl: process.env.DATABASE_URL || 'postgres://localhost:5432/waha_engine',
 
-  // WAHA
+  // WAHA. localhost only, tanpa API key (WAHA_NO_API_KEY=true di waha/.env).
   wahaBaseUrl: process.env.WAHA_BASE_URL || 'http://localhost:3000',
-  wahaApiKey: process.env.WAHA_API_KEY || '',
   wahaSessionName: process.env.WAHA_SESSION_NAME || 'default',
-  // Config yang dipasang saat session dibuat. NOWEB butuh store aktif kalau
-  // tidak semua endpoint chat membalas 400. Disimpan di .env supaya session
-  // yang dibuat ulang (mis. setelah logout) tidak kehilangan config ini.
-  wahaSessionConfig: JSON.parse(
-    process.env.WAHA_SESSION_CONFIG || '{"noweb":{"store":{"enabled":true,"fullSync":true}}}'
-  ) as Record<string, unknown>,
-
-  // Webhook
-  webhookHmacKey: process.env.WEBHOOK_HMAC_KEY || '',
-
-  // Admin
-  defaultAdminUsername: process.env.DEFAULT_ADMIN_USERNAME || 'admin',
-  defaultAdminPassword: process.env.DEFAULT_ADMIN_PASSWORD || 'admin123',
-
-  // CORS. Production is same-origin (API menyajikan SPA dari port yang sama),
-  // jadi ini cuma kepakai saat dev `bunx vite` di 5173.
-  // Jangan pernah '*' dengan credentials:true — browser menolaknya per spec.
-  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean),
 } as const;

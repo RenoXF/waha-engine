@@ -35,7 +35,7 @@ export const filesRoutes = new Elysia()
       const db = getDb();
       const rows = await db`SELECT media_path FROM app_messages WHERE id = ${messageId} LIMIT 1`;
       if (rows[0]?.media_path) {
-        const filePath = join(import.meta.dir, '../../..', rows[0].media_path);
+        const filePath = join(import.meta.dir, '../..', rows[0].media_path);
         try {
           await stat(filePath);
           const file = Bun.file(filePath);

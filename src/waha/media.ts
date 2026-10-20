@@ -1,6 +1,5 @@
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
-import { config } from '@/config';
 import { getDb } from '@/db/client';
 import { logger } from '@/logger';
 
@@ -23,6 +22,8 @@ export function getMediaType(mime: string | null): string {
 
 export function getExtension(mime: string | null): string {
   if (!mime) return 'bin';
+  // Voice note: 'audio/ogg; codecs=opus' — parameter setelah ';' harus dibuang.
+  const base = mime.split(';')[0]!.trim().toLowerCase();
   const ext: Record<string, string> = {
     'image/jpeg': 'jpg',
     'image/png': 'png',
@@ -33,9 +34,10 @@ export function getExtension(mime: string | null): string {
     'audio/ogg': 'ogg',
     'audio/opus': 'opus',
     'audio/mpeg': 'mp3',
+    'audio/mp4': 'm4a',
     'application/pdf': 'pdf',
   };
-  return ext[mime] || 'bin';
+  return ext[base] || 'bin';
 }
 
 const ALLOWED_DIRS = ['picture', 'video', 'audio', 'document', 'contact_avatar'];
@@ -69,10 +71,8 @@ export async function downloadAndStoreMedia(messageId: string, mediaUrl: string,
   // Create directory if needed
   await mkdir(dir, { recursive: true });
 
-  // Download from WAHA
-  const res = await fetch(mediaUrl, {
-    headers: { 'X-API-Key': config.wahaApiKey },
-  });
+  // Download dari WAHA (localhost, tanpa API key)
+  const res = await fetch(mediaUrl);
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
 
   const buffer = await res.arrayBuffer();

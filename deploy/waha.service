@@ -1,0 +1,19 @@
+[Unit]
+Description=WAHA (WhatsApp HTTP API)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__ROOT__/src/engine/waha
+# WAHA construct AuthConfig saat import, jadi --env-file wajib.
+# Ganti path node kalau versi nvm berubah.
+ExecStart=__NODE__ --env-file=__ROOT__/src/engine/waha/.env dist/main.js
+Restart=always
+RestartSec=5
+# WAHA + session WA memakai ~600MB. Batas 500M bikin restart-loop.
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

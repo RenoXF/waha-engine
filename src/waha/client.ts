@@ -10,7 +10,6 @@ interface WahaOptions {
 async function request<T = unknown>({ method, path, body }: WahaOptions): Promise<T> {
   const url = `${config.wahaBaseUrl}${path}`;
   const headers: Record<string, string> = {
-    'X-API-Key': config.wahaApiKey,
     'Content-Type': 'application/json',
   };
 
@@ -44,6 +43,13 @@ async function request<T = unknown>({ method, path, body }: WahaOptions): Promis
 
 // ===== Session =====
 
+// NOWEB store harus aktif, kalau tidak endpoint chat membalas 400.
+// WAHA tidak punya env var untuk ini — config hanya bisa dikirim lewat API,
+// jadi dikirim di createSession dan startSession.
+const NOWEB_STORE_CONFIG = {
+  noweb: { store: { enabled: true, fullSync: true } },
+};
+
 export async function getSession(session = config.wahaSessionName) {
   return request({ method: 'GET', path: `/api/sessions/${session}` });
 }
@@ -52,7 +58,7 @@ export async function createSession(session = config.wahaSessionName) {
   return request({
     method: 'POST',
     path: '/api/sessions',
-    body: { name: session, config: config.wahaSessionConfig },
+    body: { name: session, config: NOWEB_STORE_CONFIG },
   });
 }
 
@@ -68,17 +74,7 @@ export async function startSession(session = config.wahaSessionName, body?: Reco
   return request({
     method: 'POST',
     path: `/api/sessions/${session}/start`,
-    body: {
-      config: {
-        noweb: {
-          store: {
-            enabled: true,
-            fullSync: true,
-          },
-        },
-      },
-      ...body,
-    },
+    body: { config: NOWEB_STORE_CONFIG, ...body },
   });
 }
 
@@ -98,7 +94,7 @@ export async function getQR(session = config.wahaSessionName) {
   try {
     const res = await fetch(url, {
       method: 'GET',
-      headers: { 'X-API-Key': config.wahaApiKey, Accept: 'image/png' },
+      headers: { Accept: 'image/png' },
       signal: controller.signal,
     });
     if (!res.ok) {
@@ -125,12 +121,33 @@ export async function requestPairingCode(session = config.wahaSessionName, phone
 
 // ===== Send =====
 
-export async function sendText(session: string, body: { chatId: string; text: string; replyTo?: string }) {
-  return request({ method: 'POST', path: `/api/sendText`, body: { session, ...body } });
+export async function sendText(
+  session: string,
+  body: { chatId: string; text: string; replyTo?: string },
+) {
+  // WAHA's MessageTextRequest memakai `reply_to` (snake_case) + whitelist
+  // ValidationPipe, jadi `replyTo` akan diabaikan tanpa error.
+  const { replyTo, ...rest } = body;
+  return request({
+    method: 'POST',
+    path: `/api/sendText`,
+    body: { session, ...rest, ...(replyTo ? { reply_to: replyTo } : {}) },
+  });
 }
 
-// WAHA's fileToMessage requires an object ({url} or {data}); a plain string throws a TypeError.
-export type WahaFile = string | { url: string; mimetype?: string; filename?: string };
+// WAHA's fileToMessage requires an object ({url} or {data}); a plain string
+// throws a TypeError. `PUT /api/reaction` (bukan POST) — lihat chatting.controller.
+export async function sendReaction(
+  session: string,
+  body: { chatId: string; messageId: string; reaction: string },
+) {
+  return request({ method: 'PUT', path: `/api/reaction`, body: { session, ...body } });
+}
+
+type WahaFile =
+  | string
+  | { url: string; mimetype?: string; filename?: string }
+  | { data: string; mimetype?: string; filename?: string };
 function filePayload(file: WahaFile) {
   return typeof file === 'string' ? { url: file } : file;
 }
@@ -193,13 +210,6 @@ export async function getAllLids(session = config.wahaSessionName, limit = 1000)
   });
 }
 
-export async function getPnByLid(lid: string, session = config.wahaSessionName) {
-  return request<{ lid: string; pn: string | null }>({
-    method: 'GET',
-    path: `/api/${session}/lids/${lid}`,
-  });
-}
-
 export async function getMessages(session: string, chatId: string, limit = 50, downloadMedia = false) {
   return request({
     method: 'GET',
@@ -207,11 +217,3 @@ export async function getMessages(session: string, chatId: string, limit = 50, d
   });
 }
 
-// ===== Media =====
-
-export async function getFile(messageId: string) {
-  return request<{ url: string; mimetype: string; filesize: number }>({
-    method: 'GET',
-    path: `/api/files/${messageId}`,
-  });
-}

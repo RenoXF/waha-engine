@@ -370,6 +370,23 @@ export default function ChatArea() {
     prevFirstIdRef.current = firstId;
   }, [messages]);
 
+  // Esc: tutup emoji bila terbuka, jika tidak keluar dari chat ke daftar chat.
+  // Modal lain (status viewer, media viewer, dst.) punya handler Esc sendiri —
+  // jangan ganggu mereka.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !currentChat) return;
+      if (uiStore.getState().activeModal) return;
+      if (showEmoji) {
+        setShowEmoji(false);
+        return;
+      }
+      chatStore.getState().clearChat();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [currentChat, showEmoji]);
+
   const filePreview = useMemo(
     () => (pendingFile && pendingFile.type.startsWith('image/') ? URL.createObjectURL(pendingFile) : null),
     [pendingFile],
@@ -444,7 +461,7 @@ export default function ChatArea() {
       fd.append('clientTempId', tempId);
       try {
         const res = await api.sendMedia(fd);
-        chatStore.getState().updateMessage(tempId, { id: res.data.messageId, status: 'sent' });
+        chatStore.getState().reconcileMessage(tempId, res.data.messageId);
       } catch (err) {
         chatStore.getState().removeMessage(tempId);
         setInput(text);
@@ -486,7 +503,7 @@ export default function ChatArea() {
     chatStore.getState().addMessage(optimistic);
     try {
       const res = await api.sendText(chatJid, text, tempId);
-      chatStore.getState().updateMessage(tempId, { id: res.data.messageId, status: 'sent' });
+      chatStore.getState().reconcileMessage(tempId, res.data.messageId);
     } catch (err) {
       chatStore.getState().updateMessage(tempId, { status: 'failed' });
       uiStore.getState().showToast('Failed to send message', 'error');
@@ -501,7 +518,7 @@ export default function ChatArea() {
     chatStore.getState().updateMessage(msg.id, { status: 'pending' });
     try {
       const res = await api.sendText(msg.chat_jid, msg.body, msg.id);
-      chatStore.getState().updateMessage(msg.id, { id: res.data.messageId, status: 'sent' });
+      chatStore.getState().reconcileMessage(msg.id, res.data.messageId);
     } catch (err) {
       chatStore.getState().updateMessage(msg.id, { status: 'failed' });
       uiStore.getState().showToast('Retry failed', 'error');

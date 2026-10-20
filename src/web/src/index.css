@@ -585,6 +585,8 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
 .msg-container {
   flex: 1;
   overflow: hidden;
+  /* Jarak antara bubble terakhir dan input bar */
+  padding-bottom: 12px;
   background-color: var(--bg-pattern);
   background-image: url('/voSdkk88H7C.svg');
   background-repeat: repeat;
@@ -921,6 +923,11 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
   gap: 6px;
   padding: 5px 10px;
   background: var(--panel);
+}
+
+/* Jarak antara bubble terakhir dan input bar */
+.msg-container {
+  padding-bottom: 10px;
 }
 
 .chat-input-area {

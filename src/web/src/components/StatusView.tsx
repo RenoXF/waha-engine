@@ -135,12 +135,23 @@ export default function StatusView() {
       {/* Content */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: '0 48px 16px', position: 'relative' }}>
         {current.has_media ? (
-          <img
-            src={`/files/download/${current.id}`}
-            alt="status"
-            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }}
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-          />
+          current.message_type === 'video' ? (
+            <video
+              src={`/files/download/${current.id}`}
+              controls
+              autoPlay
+              playsInline
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }}
+              onError={(e) => { (e.target as HTMLVideoElement).style.display = 'none'; }}
+            />
+          ) : (
+            <img
+              src={`/files/download/${current.id}`}
+              alt="status"
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          )
         ) : (
           <div style={{ color: '#fff', fontSize: 22, textAlign: 'center', padding: 24, lineHeight: 1.5 }}>
             {current.body || 'Status'}

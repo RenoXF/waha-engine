@@ -3,12 +3,30 @@ import * as waha from './client';
 import { ssePush } from './sse-pubsub';
 import { config } from '@/config';
 import { logger } from '@/logger';
+import { authorJidOf, messageTypeOf, quotedIdOf } from './extract';
+
+let running = false;
 
 /**
  * Pull chat list + messages from WAHA store and upsert to our DB.
- * Call this when session status = WORKING.
+ * Returns true kalau sync benar-benar jalan, false kalau di-skip
+ * (session belum WORKING / WAHA belum siap / sync lain sedang jalan).
  */
-export async function syncFromWaha(): Promise<void> {
+export async function syncFromWaha(): Promise<boolean> {
+  // Boot tick dan webhook session.status bisa memicu sync bersamaan.
+  if (running) {
+    logger.debug('[sync] Skipped — already running');
+    return false;
+  }
+  running = true;
+  try {
+    return await syncOnce();
+  } finally {
+    running = false;
+  }
+}
+
+async function syncOnce(): Promise<boolean> {
   const session = config.wahaSessionName;
   const db = getDb();
 
@@ -17,11 +35,11 @@ export async function syncFromWaha(): Promise<void> {
     const status = await waha.getSession(session) as { status?: string };
     if (status?.status !== 'WORKING') {
       logger.debug(`[sync] Skipped — session status: ${status?.status}`);
-      return;
+      return false;
     }
   } catch {
     logger.debug('[sync] Skipped — session not reachable');
-    return;
+    return false;
   }
 
   logger.info('[sync] Pulling chats from WAHA...');
@@ -160,15 +178,18 @@ export async function syncFromWaha(): Promise<void> {
       INSERT INTO app_chats (chat_jid, chat_type, name, updated_at)
       VALUES (${chatJid}, ${chatType}, ${name}, now())
       ON CONFLICT (chat_jid) DO UPDATE SET
+        chat_type = EXCLUDED.chat_type,
         name = COALESCE(EXCLUDED.name, app_chats.name),
         updated_at = now()
     `.catch((e) => logger.error(e, `[sync] Failed upsert chat ${chatJid}`));
 
     // 2b. Get messages for this chat (last 100)
     try {
-      // downloadMedia=false — history media keys are expired, downloading causes
-      // WAHA to spam reupload requests to the phone (403 / bad decrypt).
-      const msgsRes = await waha.getMessages(session, chatJid, 100, false) as { data?: any[] } | any[];
+      // Story: item hanya hidup 24 jam jadi jumlahnya sedikit dan media masih
+      // bisa diunduh. History chat biasa tetap false — key media lama sudah
+      // kedaluwarsa dan memicu WAHA spam reupload ke HP (403 / bad decrypt).
+      const isStatus = chatJid === 'status@broadcast';
+      const msgsRes = await waha.getMessages(session, chatJid, 100, isStatus) as { data?: any[] } | any[];
       const messages = Array.isArray(msgsRes) ? msgsRes : msgsRes?.data || [];
 
       for (const msg of messages) {
@@ -176,45 +197,60 @@ export async function syncFromWaha(): Promise<void> {
         if (!msgId) continue;
 
         const fromMe = msg.fromMe || false;
-        const body = msg.body || msg.caption || null;
+        const body = msg.body || null;
         const timestamp = msg.timestamp;
         const waTimestamp = timestamp ? new Date(timestamp * 1000).toISOString() : new Date().toISOString();
-        const fromJid = msg.from || null;
+        const participant = msg.participant || null;
+        const fromJid = authorJidOf(msg, chatJid);
+        const quotedId = quotedIdOf(msg);
 
-        // Extract media info
+        // Chat biasa: downloadMedia=false → `media` null, jadi tipe dideteksi
+        // dari mimetype atau key mentah Baileys (`_data.message`).
         const media = msg.media || null;
-        const hasMedia = !!media;
+        const hasMedia = Boolean(msg.hasMedia ?? media);
         const mediaMime = media?.mimetype || null;
         const mediaUrl = media?.url || null;
         const mediaFilename = media?.filename || null;
         const mediaSize = media?.filesize || null;
+        const messageType = messageTypeOf(msg);
 
-        // Detect message type
-        let messageType = msg.type || 'text';
-        if (hasMedia && mediaMime) {
-          if (mediaMime.startsWith('image/')) messageType = 'image';
-          else if (mediaMime.startsWith('video/')) messageType = 'video';
-          else if (mediaMime.startsWith('audio/')) messageType = 'audio';
-          else messageType = 'document';
-        }
-
-        await db`
-          INSERT INTO app_messages (id, chat_jid, from_jid, from_me, message_type, body, wa_timestamp, has_media, media_mime, media_filename, media_size)
-          VALUES (${msgId}, ${chatJid}, ${fromJid}, ${fromMe}, ${messageType}, ${body}, ${waTimestamp}, ${hasMedia}, ${mediaMime}, ${mediaFilename}, ${mediaSize})
+        const inserted = await db`
+          INSERT INTO app_messages (id, chat_jid, from_jid, from_me, participant, message_type, body, quoted_id, wa_timestamp, has_media, media_mime, media_filename, media_size)
+          VALUES (${msgId}, ${chatJid}, ${fromJid}, ${fromMe}, ${participant}, ${messageType}, ${body}, ${quotedId}, ${waTimestamp}, ${hasMedia}, ${mediaMime}, ${mediaFilename}, ${mediaSize})
           ON CONFLICT (id) DO NOTHING
-        `.catch((e) => logger.warn(e, `[sync] insert message ${msgId} gagal`));
+          RETURNING id
+        `.catch((e) => {
+          logger.warn(e, `[sync] insert message ${msgId} gagal`);
+          return [] as { id: string }[];
+        });
 
-        // Update chat preview
-        if (body) {
-          await db`
-            UPDATE app_chats SET
-              last_message_id = ${msgId},
-              last_message_at = ${waTimestamp},
-              last_message_preview = ${body.substring(0, 100)},
-              updated_at = now()
-            WHERE chat_jid = ${chatJid}
-          `.catch((e) => logger.warn(e, `[sync] update preview ${chatJid} gagal`));
+        // Story lama bisa tersimpan dengan from_jid = chat_jid sebelum author
+        // diekstrak dari id. Perbaiki tanpa menimpa from_jid yang sudah benar.
+        if (isStatus && fromJid !== chatJid) {
+          await db`UPDATE app_messages SET from_jid = ${fromJid}
+                   WHERE id = ${msgId} AND from_jid = ${chatJid}`.catch(() => {});
         }
+
+        // Unduh media hanya untuk baris yang benar-benar baru.
+        if (inserted.length && hasMedia && mediaUrl) {
+          const { downloadAndStoreMedia } = await import('./media');
+          await downloadAndStoreMedia(msgId, mediaUrl, mediaMime).catch((e) =>
+            logger.warn(e, `[sync] media ${msgId} gagal diunduh`),
+          );
+        }
+
+        // Update chat preview — hanya kalau pesan ini lebih baru dari preview
+        // sekarang. WAHA mengirim terbaru dulu, jadi tanpa guard preview akhir
+        // jadi pesan tertua. Pesan media (body null) tetap diwakili tipenya.
+        await db`
+          UPDATE app_chats SET
+            last_message_id = ${msgId},
+            last_message_at = ${waTimestamp},
+            last_message_preview = ${body ? body.substring(0, 100) : `[${messageType}]`},
+            updated_at = now()
+          WHERE chat_jid = ${chatJid}
+            AND (last_message_at IS NULL OR last_message_at < ${waTimestamp})
+        `.catch((e) => logger.warn(e, `[sync] update preview ${chatJid} gagal`));
       }
 
       logger.info(`[sync] Chat ${chatJid}: ${messages.length} messages`);
@@ -225,4 +261,5 @@ export async function syncFromWaha(): Promise<void> {
 
   logger.info('[sync] Complete');
   ssePush('chats', null);
+  return true;
 }

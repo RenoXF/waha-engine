@@ -3,7 +3,7 @@ import { chatStore } from '../stores/chatStore';
 import { contactStore } from '../stores/contactStore';
 
 /** Shorten a raw JID for display: 6285163063603@s.whatsapp.net → 6285163063603 */
-export function formatJid(jid: string): string {
+function formatJid(jid: string): string {
   const base = jid.split('@')[0];
   return base.length > 15 ? `${base.slice(0, 12)}…` : base;
 }

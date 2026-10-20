@@ -60,6 +60,7 @@ export const chatStore = create<{
   loadMore: () => Promise<void>;
   loadingMore: boolean;
   addMessage: (msg: Message) => void;
+  reconcileMessage: (tempId: string, realId: string) => void;
   updateMessage: (id: string, updates: Partial<Message>) => void;
   removeMessage: (id: string) => void;
 }>((set, get) => ({
@@ -117,6 +118,21 @@ export const chatStore = create<{
       return { messages: [...s.messages, msg] };
     }
     return s;
+  }),
+
+  // Temp id → id asli dari WAHA. SSE `message` bisa tiba lebih dulu, jadi id asli
+  // mungkin sudah ada di list: kalau begitu buang bubble sementara, jangan rename
+  // (rename = dua bubble ber-id sama, key React bentrok).
+  reconcileMessage: (tempId, realId) => set((s) => {
+    if (tempId === realId) return s;
+    if (s.messages.some(m => m.id === realId)) {
+      return { messages: s.messages.filter(m => m.id !== tempId) };
+    }
+    return {
+      messages: s.messages.map(m =>
+        m.id === tempId ? { ...m, id: realId, status: 'sent' } : m
+      ),
+    };
   }),
 
   updateMessage: (id, updates) => set((s) => ({

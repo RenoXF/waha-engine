@@ -1,6 +1,6 @@
 import { logger } from '@/logger';
 
-export interface SseEvent {
+interface SseEvent {
   id: number;
   type: string;
   data: unknown;
@@ -34,4 +34,8 @@ export function subscribeSse(cb: Subscriber): () => void {
 
 export function getBufferedEvents(sinceId: number): SseEvent[] {
   return buffer.filter(e => e.id > sinceId);
+}
+
+export function getLastEventId(): number {
+  return eventId;
 }

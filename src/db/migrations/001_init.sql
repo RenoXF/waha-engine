@@ -1,13 +1,10 @@
--- ===================== USERS (app login) =====================
-CREATE TABLE app_users (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  username      TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  role          TEXT NOT NULL DEFAULT 'agent', -- admin | agent
-  is_active     BOOLEAN DEFAULT true,
-  created_at    TIMESTAMPTZ DEFAULT now(),
-  updated_at    TIMESTAMPTZ DEFAULT now()
-);
+-- ============================================================
+-- WAHA Engine — skema final dalam satu file.
+-- 001_init = struktur tabel saja. Semua index ada di 002_optimize.
+--
+-- Tidak ada app_users: login memakai satu APP_PASSWORD dari .env.
+-- Log ada di app_logs (level + message), bukan app_error_log.
+-- ============================================================
 
 -- ===================== CONTACTS =====================
 CREATE TABLE app_contacts (
@@ -25,9 +22,9 @@ CREATE TABLE app_contacts (
   created_at      TIMESTAMPTZ DEFAULT now(),
   updated_at      TIMESTAMPTZ DEFAULT now()
 );
-CREATE INDEX idx_contacts_phone ON app_contacts(phone);
-CREATE INDEX idx_contacts_push_name ON app_contacts(push_name);
 
+-- 73% kontak WAHA datang berjid @lid, bukan nomor. Tabel ini yang
+-- menerjemahkan @lid → nomor asli.
 CREATE TABLE app_lid_pn_mapping (
   lid        TEXT PRIMARY KEY,
   pn         TEXT NOT NULL,
@@ -47,10 +44,10 @@ CREATE TABLE app_groups (
 );
 
 CREATE TABLE app_group_participants (
-  group_jid      TEXT REFERENCES app_groups(group_jid) ON DELETE CASCADE,
-  participant_jid TEXT,
-  is_admin       BOOLEAN DEFAULT false,
-  joined_at      TIMESTAMPTZ DEFAULT now(),
+  group_jid       TEXT NOT NULL REFERENCES app_groups(group_jid) ON DELETE CASCADE,
+  participant_jid TEXT NOT NULL,
+  is_admin        BOOLEAN DEFAULT false,
+  joined_at       TIMESTAMPTZ DEFAULT now(),
   PRIMARY KEY (group_jid, participant_jid)
 );
 
@@ -88,16 +85,10 @@ CREATE TABLE app_messages (
   -- timestamps
   wa_timestamp     TIMESTAMPTZ NOT NULL,
   created_at       TIMESTAMPTZ DEFAULT now(),
-  updated_at       TIMESTAMPTZ DEFAULT now(),
-
-  UNIQUE (id, chat_jid)
+  updated_at       TIMESTAMPTZ DEFAULT now()
 );
-CREATE INDEX idx_messages_chat_time ON app_messages(chat_jid, wa_timestamp DESC);
-CREATE INDEX idx_messages_from_me ON app_messages(from_me);
-CREATE INDEX idx_messages_type ON app_messages(message_type);
-CREATE INDEX idx_messages_deleted ON app_messages(is_deleted) WHERE is_deleted = true;
 
--- ===================== MESSAGE EDITS (riwayat) =====================
+-- Riwayat edit. body di app_messages selalu versi terbaru.
 CREATE TABLE app_message_edits (
   id         BIGSERIAL PRIMARY KEY,
   message_id TEXT NOT NULL,
@@ -107,13 +98,12 @@ CREATE TABLE app_message_edits (
   edited_at  TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
-CREATE INDEX idx_edits_message ON app_message_edits(message_id, edited_at);
 
--- ===================== MESSAGE STATUS (centang + waktu) =====================
+-- Centang: pending | sent | delivered | read | failed
 CREATE TABLE app_message_status (
   message_id    TEXT PRIMARY KEY,
   chat_jid      TEXT NOT NULL,
-  status        TEXT NOT NULL DEFAULT 'pending', -- pending | sent | delivered | read | failed
+  status        TEXT NOT NULL DEFAULT 'pending',
   pending_at    TIMESTAMPTZ,
   sent_at       TIMESTAMPTZ,
   delivered_at  TIMESTAMPTZ,
@@ -122,8 +112,8 @@ CREATE TABLE app_message_status (
   error_message TEXT,
   updated_at    TIMESTAMPTZ DEFAULT now()
 );
-CREATE INDEX idx_status_chat ON app_message_status(chat_jid);
 
+-- Siapa yang sudah delivered/read, per peserta grup (event message.ack.group).
 CREATE TABLE app_message_receipts (
   message_id      TEXT NOT NULL,
   participant_jid TEXT NOT NULL,
@@ -132,17 +122,16 @@ CREATE TABLE app_message_receipts (
   PRIMARY KEY (message_id, participant_jid, status)
 );
 
--- ===================== REACTIONS =====================
 CREATE TABLE app_message_reactions (
   message_id  TEXT NOT NULL,
   chat_jid    TEXT NOT NULL,
-  reactor_jid TEXT NOT NULL,
+  reactor_jid TEXT NOT NULL, -- jid peserta, atau 'self' untuk reaksi kita
   emoji       TEXT NOT NULL,
   reacted_at  TIMESTAMPTZ NOT NULL,
   PRIMARY KEY (message_id, reactor_jid)
 );
 
--- ===================== CHATS (sidebar list) =====================
+-- ===================== CHATS (sidebar) =====================
 CREATE TABLE app_chats (
   chat_jid             TEXT PRIMARY KEY,
   chat_type            TEXT NOT NULL, -- contact | group
@@ -156,33 +145,15 @@ CREATE TABLE app_chats (
   is_archived          BOOLEAN DEFAULT false,
   updated_at           TIMESTAMPTZ DEFAULT now()
 );
-CREATE INDEX idx_chats_last ON app_chats(last_message_at DESC NULLS LAST);
 
--- ===================== STATUS / STORY (best-effort) =====================
-CREATE TABLE app_status_items (
-  id           TEXT PRIMARY KEY,
-  owner_jid    TEXT NOT NULL,
-  message_type TEXT,
-  body         TEXT,
-  media_path   TEXT,
-  media_mime   TEXT,
-  wa_timestamp TIMESTAMPTZ NOT NULL,
-  expires_at   TIMESTAMPTZ,
-  created_at   TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE TABLE app_status_views (
-  status_id  TEXT NOT NULL,
-  viewer_jid TEXT NOT NULL,
-  viewed_at  TIMESTAMPTZ NOT NULL,
-  PRIMARY KEY (status_id, viewer_jid)
-);
-
--- ===================== ERROR LOG =====================
-CREATE TABLE app_error_log (
+-- ===================== LOG =====================
+-- Diisi otomatis oleh src/logger.ts (warn/error/fatal saja).
+-- Baca lewat GET /logs, tidak perlu pantau terminal.
+CREATE TABLE app_logs (
   id         BIGSERIAL PRIMARY KEY,
+  level      TEXT NOT NULL DEFAULT 'info',
   source     TEXT,
+  message    TEXT NOT NULL DEFAULT '',
   detail     TEXT,
-  payload    JSONB,
   created_at TIMESTAMPTZ DEFAULT now()
 );

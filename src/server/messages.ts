@@ -9,6 +9,22 @@ const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const TEMP_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
+ * Baileys `sendMessage` mengembalikan `key` mentah (`key.id` polos), sedangkan
+ * webhook mengirim id versi WAHA: `{fromMe}_{remoteJid}_{id}[_{participant}]`.
+ * Tanpa diterjemahkan ke format yang sama, pesan keluar masuk dua kali
+ * (baris polos dari send + baris composite dari webhook).
+ */
+export function compositeId(recipient: string, key: Record<string, unknown> | undefined): string | undefined {
+  const id = key?.id as string | undefined;
+  if (!id) return undefined;
+  if (id.includes('@')) return id; // sudah format WAHA
+  const remoteJid = (key?.remoteJid as string | undefined) || recipient;
+  const participant = key?.participant as string | undefined;
+  const fromMe = key?.fromMe !== false;
+  return `${fromMe ? 'true' : 'false'}_${remoteJid}_${id}${participant ? '_' + participant : ''}`;
+}
+
+/**
  * Swap temp id → WAHA id, push `sent`, schedule the 30s pending→failed poll.
  * Returns the id the message now lives under.
  */
@@ -16,12 +32,45 @@ async function settleSend(tempId: string, recipient: string, keyId?: string): Pr
   const db = getDb();
   const finalId = keyId || tempId;
   if (keyId && keyId !== tempId) {
-    await db`UPDATE app_messages SET id = ${keyId} WHERE id = ${tempId}`;
-    await db`UPDATE app_message_status SET message_id = ${keyId} WHERE message_id = ${tempId}`;
+    // Webhook bisa tiba lebih dulu dan sudah insert id=keyId. Update biasa akan
+    // kena unique violation → 500 padahal pesan terkirim. Cek dulu, kalau sudah
+    // ada buang baris temp (data asli sudah ada di baris keyId).
+    const moved = await db`
+      UPDATE app_messages SET id = ${keyId}
+      WHERE id = ${tempId}
+        AND NOT EXISTS (SELECT 1 FROM app_messages WHERE id = ${keyId})
+      RETURNING id
+    `;
+    if (moved.length === 0) {
+      // Baris real sudah ada (webhook menang). Bawa kolom media dari baris temp
+      // dulu supaya media_path/caption tidak hilang saat temp dihapus.
+      await db`
+        UPDATE app_messages dst SET
+          body = COALESCE(dst.body, src.body),
+          has_media = COALESCE(dst.has_media, false) OR COALESCE(src.has_media, false),
+          media_path = COALESCE(dst.media_path, src.media_path),
+          media_mime = COALESCE(dst.media_mime, src.media_mime),
+          media_filename = COALESCE(dst.media_filename, src.media_filename),
+          media_size = COALESCE(dst.media_size, src.media_size),
+          updated_at = now()
+        FROM app_messages src
+        WHERE dst.id = ${keyId} AND src.id = ${tempId}
+      `;
+      await db`DELETE FROM app_messages WHERE id = ${tempId}`;
+    }
+    await db`DELETE FROM app_message_status WHERE message_id = ${tempId}`;
   }
   if (keyId) {
-    // Record sent in DB too — otherwise the 30s poll can mark a delivered message failed
-    await db`UPDATE app_message_status SET status = 'sent', sent_at = COALESCE(sent_at, now()), updated_at = now() WHERE message_id = ${finalId}`;
+    // Record sent in DB too — otherwise the 30s poll can mark a delivered message
+    // failed. CASE: jangan turunkan status yang sudah delivered/read.
+    await db`
+      INSERT INTO app_message_status (message_id, chat_jid, status, sent_at, updated_at)
+      VALUES (${finalId}, ${recipient}, 'sent', now(), now())
+      ON CONFLICT (message_id) DO UPDATE SET
+        status = CASE WHEN app_message_status.status = 'pending' THEN 'sent' ELSE app_message_status.status END,
+        sent_at = COALESCE(app_message_status.sent_at, now()),
+        updated_at = now()
+    `;
     ssePush('message_status', { id: finalId, chatJid: recipient, status: 'sent' });
   }
   setTimeout(async () => {
@@ -38,8 +87,15 @@ async function settleSend(tempId: string, recipient: string, keyId?: string): Pr
 
 async function failSend(tempId: string, err: unknown): Promise<void> {
   const db = getDb();
-  await db`UPDATE app_message_status SET status = 'failed', failed_at = now(), updated_at = now(), error_message = ${String(err)} WHERE message_id = ${tempId}`;
-  ssePush('message_failed', { messageId: tempId });
+  // Hanya pesan yang masih pending: kirim bisa "gagal" di client padahal WAHA
+  // sudah meneruskan, dan status delivered/read tidak boleh diturunkan.
+  const failed = await db`
+    UPDATE app_message_status
+    SET status = 'failed', failed_at = now(), updated_at = now(), error_message = ${String(err)}
+    WHERE message_id = ${tempId} AND status = 'pending'
+    RETURNING message_id
+  `;
+  if (failed.length > 0) ssePush('message_failed', { messageId: tempId });
 }
 
 /** Ensure a pending message row exists (fresh insert, or reset in place on retry). Returns true if fresh. */
@@ -125,7 +181,7 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
       -- Contact via resolved PN
       LEFT JOIN app_contacts pn_c ON pn_c.jid = lm.pn
       WHERE ch.is_archived = false
-        AND ch.chat_jid NOT LIKE '%@broadcast'
+        AND ch.chat_jid <> 'status@broadcast'
         AND ch.chat_jid NOT LIKE '%@newsletter'
       ORDER BY ch.is_pinned DESC, ch.last_message_at DESC NULLS LAST
       LIMIT 200
@@ -147,10 +203,12 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
     const statuses = await db`
       SELECT m.id, m.from_jid, m.body, m.message_type, m.has_media, m.wa_timestamp,
              m.media_mime, m.media_path,
-             COALESCE(c.push_name, c.custom_name, m.from_jid) as display_name
+             COALESCE(c.push_name, c.custom_name, pn_c.push_name, pn_c.custom_name, m.from_jid) as display_name
       FROM app_messages m
       LEFT JOIN app_contacts c ON m.from_jid = c.jid
-      WHERE m.chat_jid LIKE '%@broadcast'
+      LEFT JOIN app_lid_pn_mapping lm ON lm.lid = m.from_jid
+      LEFT JOIN app_contacts pn_c ON pn_c.jid = lm.pn
+      WHERE m.chat_jid = 'status@broadcast'
       ORDER BY m.wa_timestamp DESC
       LIMIT 100
     `;
@@ -185,7 +243,8 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
     let messages;
     if (cursor && cursorId) {
       messages = await db`
-        SELECT m.*, q.body AS quoted_body, q.from_me AS quoted_from_me, q.from_jid AS quoted_from_jid,
+        SELECT m.*, q.body AS quoted_body, q.from_me AS quoted_from_me,
+               COALESCE(q.participant, q.from_jid) AS quoted_from_jid,
                q.message_type AS quoted_type, q.is_deleted AS quoted_deleted,
                ms.status, ms.pending_at, ms.sent_at, ms.delivered_at, ms.read_at, ms.failed_at
         FROM app_messages m
@@ -197,7 +256,8 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
       `;
     } else {
       messages = await db`
-        SELECT m.*, q.body AS quoted_body, q.from_me AS quoted_from_me, q.from_jid AS quoted_from_jid,
+        SELECT m.*, q.body AS quoted_body, q.from_me AS quoted_from_me,
+               COALESCE(q.participant, q.from_jid) AS quoted_from_jid,
                q.message_type AS quoted_type, q.is_deleted AS quoted_deleted,
                ms.status, ms.pending_at, ms.sent_at, ms.delivered_at, ms.read_at, ms.failed_at
         FROM app_messages m
@@ -232,7 +292,7 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
     try {
       const result = await waha.sendText(session, { chatId: recipient, text: message }) as Record<string, unknown>;
       const key = result.key as Record<string, unknown> | undefined;
-      const finalId = await settleSend(tempId, recipient, key?.id as string | undefined);
+      const finalId = await settleSend(tempId, recipient, compositeId(recipient, key));
       return { success: true, data: { messageId: finalId } };
     } catch (err) {
       await failSend(tempId, err);
@@ -261,7 +321,7 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
     try {
       const result = await waha.sendText(session, { chatId: recipient, text: message, replyTo: quotedId }) as Record<string, unknown>;
       const key = result.key as Record<string, unknown> | undefined;
-      const finalId = await settleSend(tempId, recipient, key?.id as string | undefined);
+      const finalId = await settleSend(tempId, recipient, compositeId(recipient, key));
       return { success: true, data: { messageId: finalId } };
     } catch (err) {
       await failSend(tempId, err);
@@ -338,9 +398,13 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
     });
     ssePush('chats', null);
 
-    // 3. Hand to WAHA — it fetches the file from our own /files route
-    const fileUrl = `http://127.0.0.1:${config.port}/files/${mediaType}/${filename}`;
-    const payload = { url: fileUrl, mimetype: mime, filename: originalName };
+    // 3. Hand to WAHA as base64. URL ke /files tidak bisa dipakai: route itu
+    // di balik auth guard, dan WAHA fetch tanpa cookie/header → 401.
+    const payload = {
+      data: Buffer.from(await file.arrayBuffer()).toString('base64'),
+      mimetype: mime,
+      filename: originalName,
+    };
     try {
       let result: unknown;
       if (mime.startsWith('image/')) {
@@ -353,7 +417,7 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
         result = await waha.sendFile(session, { chatId: recipient, file: payload, filename: originalName, caption: caption || undefined });
       }
       const key = (result as Record<string, unknown> | undefined)?.key as Record<string, unknown> | undefined;
-      const finalId = await settleSend(tempId, recipient, key?.id as string | undefined);
+      const finalId = await settleSend(tempId, recipient, compositeId(recipient, key));
       return { success: true, data: { messageId: finalId } };
     } catch (err) {
       await failSend(tempId, err);
@@ -407,8 +471,14 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
     if (!messageId) return Response.json({ error: 'messageId required' }, { status: 400 });
 
     const db = getDb();
+    // Kirim ke WhatsApp dulu — reaksi hanya lokal kalau ini gagal.
+    await waha.sendReaction(config.wahaSessionName, {
+      chatId: chatJid,
+      messageId,
+      reaction: emoji || '',
+    });
     if (!emoji) {
-      await db`DELETE FROM app_message_reactions WHERE message_id = ${messageId}`;
+      await db`DELETE FROM app_message_reactions WHERE message_id = ${messageId} AND reactor_jid = 'self'`;
     } else {
       await db`INSERT INTO app_message_reactions (message_id, chat_jid, reactor_jid, emoji, reacted_at) VALUES (${messageId}, ${chatJid}, 'self', ${emoji}, now()) ON CONFLICT (message_id, reactor_jid) DO UPDATE SET emoji = EXCLUDED.emoji, reacted_at = now()`;
     }

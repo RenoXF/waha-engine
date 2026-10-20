@@ -1,19 +1,12 @@
 import { Elysia } from 'elysia';
-import { verifyToken } from '@/auth';
-import { readToken } from '@/auth/session';
-import { subscribeSse, getBufferedEvents } from '@/waha/sse-pubsub';
+import { tokenIsValid } from '@/auth';
+import { subscribeSse, getBufferedEvents, getLastEventId } from '@/waha/sse-pubsub';
 
 export const sseRoutes = new Elysia()
   .get('/sse/live', async ({ request, cookie: { waha_session } }) => {
-    // Auth: cookie first, then ?token=
-    const token = readToken(request, waha_session?.value);
-    if (!token) {
+    // Same-origin (API menyajikan SPA), jadi cookie selalu ikut di EventSource.
+    if (!tokenIsValid(waha_session?.value)) {
       return new Response('Unauthorized', { status: 401 });
-    }
-
-    const user = await verifyToken(token);
-    if (!user) {
-      return new Response('Invalid token', { status: 401 });
     }
 
     // Check Last-Event-ID for replay
@@ -32,10 +25,20 @@ export const sseRoutes = new Elysia()
           }
         };
 
+        // Replay + subscribe tanpa duplikat: event yang masuk selama replay
+        // ditampung dulu, replay hanya sampai snapshot id, sisanya menyusul.
+        const boundary = getLastEventId();
+        let replaying = true;
+        const pending: string[] = [];
+        const encode = (event: { id: number; type: string; data: unknown }) =>
+          `id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
+
         const unsubscribe = subscribeSse((event) => {
-          safeEnqueue(
-            `id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`
-          );
+          if (replaying) {
+            pending.push(encode(event));
+            return;
+          }
+          safeEnqueue(encode(event));
         });
 
         const keepalive = setInterval(() => {
@@ -52,11 +55,12 @@ export const sseRoutes = new Elysia()
         // Replay buffered events
         if (lastId > 0) {
           for (const event of getBufferedEvents(lastId)) {
-            safeEnqueue(
-              `id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`
-            );
+            if (event.id > boundary) break;
+            safeEnqueue(encode(event));
           }
         }
+        replaying = false;
+        for (const chunk of pending) safeEnqueue(chunk);
 
         // Komentar langsung supaya browser/proxy tahu stream hidup tanpa
         // menunggu event pertama.

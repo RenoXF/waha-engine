@@ -1,15 +1,9 @@
 # web
 
-To install dependencies:
+React SPA (Vite + Tailwind). Dibangun ke `dist/` dan disajikan oleh API (`src/server/index.ts`).
 
 ```bash
 bun install
+bun run dev     # http://localhost:5173, proxy ke API :4000
+bun run build   # hasil ke dist/
 ```
-
-To run:
-
-```bash
-bun run index.ts
-```
-
-This project was created using `bun init` in bun v1.3.14. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.

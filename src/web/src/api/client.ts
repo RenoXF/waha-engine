@@ -1,11 +1,11 @@
 const BASE = '';
 
-export interface ApiResp<T> {
+interface ApiResp<T> {
   success: boolean;
   data: T;
 }
 
-export interface CallRow {
+interface CallRow {
   id: string;
   chat_jid: string;
   from_jid: string;
@@ -14,7 +14,7 @@ export interface CallRow {
   display_name: string;
 }
 
-export interface StatusRow {
+interface StatusRow {
   id: string;
   from_jid: string;
   body: string | null;
@@ -26,14 +26,14 @@ export interface StatusRow {
   display_name: string;
 }
 
-export interface ParticipantRow {
+interface ParticipantRow {
   participant_jid: string;
   is_admin: boolean;
   push_name: string | null;
   avatar_path: string | null;
 }
 
-export interface UserRow {
+interface UserRow {
   id: string;
   username: string;
   role: string;

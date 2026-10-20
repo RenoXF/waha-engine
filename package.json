@@ -9,9 +9,8 @@
     "start:all": "bash start.sh start",
     "stop": "bash start.sh stop",
     "logs": "bash start.sh logs",
-    "test": "bun test",
+    "test": "bun test src/waha src/server src/web/src/stores",
     "db:migrate": "bun -e \"import('./src/db/migrate').then(m => m.migrate())\"",
-    "db:seed": "bun -e \"import('./src/db/seed').then(s => s.seed())\"",
     "lint": "bunx prettier --check .",
     "format": "bunx prettier --write ."
   },
@@ -22,11 +21,7 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@elysiajs/cors": "^1.4.2",
-    "@elysiajs/openapi": "^1.4.16",
-    "croner": "^10.0.1",
     "elysia": "^1.4.30",
-    "jose": "^6.2.12",
     "pino": "^10.3.1",
     "pino-pretty": "^13.1.3",
     "postgres": "^3.4.9"

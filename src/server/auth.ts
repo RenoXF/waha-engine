@@ -1,88 +1,38 @@
-import { Elysia, t } from 'elysia';
-import { createToken, verifyToken, hashPassword, verifyPassword } from '@/auth';
-import { readToken } from '@/auth/session';
-import { checkRateLimit, recordFailure } from '@/auth/rate-limit';
-import { getDb } from '@/db/client';
-import { config } from '@/config';
+import { Elysia } from 'elysia';
+import { passwordMatches, sessionToken, tokenIsValid, SELF } from '@/auth';
 import { logger } from '@/logger';
 
+// Login tetap menerima { username, password } karena form UI tidak diubah.
+// Username diabaikan: satu password bersama untuk semua orang.
 export const authRoutes = new Elysia({ prefix: '/auth' })
-  // POST /auth/login
-  .post('/login', async ({ request, cookie: { waha_session } }) => {
-    const body = await request.json();
-    const { username, password } = body as { username: string; password: string };
+  .post('/login', ({ body, cookie: { waha_session } }) => {
+    const { password } = (body || {}) as { password?: string };
 
-    if (!username || !password) {
-      return Response.json({ error: 'Username and password required' }, { status: 400 });
+    if (!passwordMatches(password)) {
+      logger.warn('[auth] Login gagal');
+      return Response.json({ error: 'Invalid password' }, { status: 401 });
     }
 
-    // Kunci per username, bukan per IP: semua cabang kantor datang lewat satu
-    // egress, jadi limit per-IP membuat 5 salah ketik mengunci 3 kantor.
-    const { ok, retryAfterMs } = checkRateLimit(username.toLowerCase());
-    if (!ok) {
-      return Response.json(
-        { error: 'Too many attempts', retryAfterMs },
-        { status: 429 }
-      );
-    }
-
-    const db = getDb();
-    const users = await db`
-      SELECT id, username, password_hash, role, is_active
-      FROM app_users WHERE username = ${username} LIMIT 1
-    `;
-
-    if (users.length === 0) {
-      recordFailure(username.toLowerCase());
-      return Response.json({ error: 'Invalid credentials' }, { status: 401 });
-    }
-
-    const user = users[0];
-    if (!user.is_active) {
-      return Response.json({ error: 'Account disabled' }, { status: 403 });
-    }
-
-    const valid = await verifyPassword(password, user.password_hash);
-    if (!valid) {
-      recordFailure(username.toLowerCase());
-      return Response.json({ error: 'Invalid credentials' }, { status: 401 });
-    }
-
-    const token = await createToken({
-      userId: user.id,
-      username: user.username,
-      role: user.role,
-    });
-
-    waha_session.set({
-      value: token,
+    waha_session!.set({
+      value: sessionToken(),
       httpOnly: true,
       sameSite: 'lax',
       path: '/',
-      maxAge: 7 * 24 * 60 * 60, // 7 days
+      maxAge: 7 * 24 * 60 * 60,
     });
 
-    logger.info(`[auth] Login: ${username}`);
-    return { success: true, data: { userId: user.id, username: user.username, role: user.role } };
+    logger.info('[auth] Login berhasil');
+    return { success: true, data: SELF };
   })
 
-  // POST /auth/logout
   .post('/logout', ({ cookie: { waha_session } }) => {
-    waha_session.remove();
+    waha_session!.remove();
     return { success: true };
   })
 
-  // GET /auth/me
-  .get('/me', async ({ request, cookie: { waha_session } }) => {
-    const token = readToken(request, waha_session?.value);
-    if (!token) {
+  .get('/me', ({ cookie: { waha_session } }) => {
+    if (!tokenIsValid(waha_session?.value)) {
       return Response.json({ error: 'Not authenticated' }, { status: 401 });
     }
-
-    const user = await verifyToken(token);
-    if (!user) {
-      return Response.json({ error: 'Invalid token' }, { status: 401 });
-    }
-
-    return { success: true, data: user };
+    return { success: true, data: SELF };
   });

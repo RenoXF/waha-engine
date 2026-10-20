@@ -22,8 +22,8 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
 
-    // Path alias
-    "baseUrl": ".",
+    // Path alias. Tanpa `baseUrl` (deprecated di TS 5.9): `paths` relatif ke
+    // direktori tsconfig ini.
     "paths": {
       "@/*": ["./src/*"]
     },

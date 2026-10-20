@@ -14,6 +14,7 @@ coverage
 
 # media files
 Media/
+.media/
 
 # env (keep .env.example)
 .env

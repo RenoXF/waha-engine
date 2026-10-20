@@ -1,15 +1,12 @@
 # waha-engine
 
-To install dependencies:
+WhatsApp Web client: WAHA (NOWEB) + Elysia (Bun) + PostgreSQL + React SPA.
 
 ```bash
 bun install
+cp .env.example .env          # edit DATABASE_URL + APP_PASSWORD
+cd src/web && bun install && cd ../..
+./start.sh                    # build web, install unit systemd, start
 ```
 
-To run:
-
-```bash
-bun run index.ts
-```
-
-This project was created using `bun init` in bun v1.3.14. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+Detail konfigurasi WAHA: lihat `.env.example` dan `start.sh`.
