@@ -39,6 +39,7 @@ export interface Message {
   media_size?: number | null;
   is_edited: boolean;
   is_deleted: boolean;
+  is_pinned?: boolean;
   status?: string | null;
   pending_at?: string | null;
   sent_at?: string | null;

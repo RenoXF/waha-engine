@@ -53,6 +53,39 @@ test('message duplikat (send → webhook) tidak menambah baris', async () => {
   expect(rows[0]?.n).toBe(1);
 });
 
+test('message keluar: baris id polos dari send digabung ke baris webhook', async () => {
+  const bare = `${TAG}_ownbare`;
+  const own = `${TAG}_own@c.us`;
+  const composite = `true_${own}_${bare}`;
+  await db`
+    INSERT INTO app_messages (id, chat_jid, from_me, message_type, body, wa_timestamp, has_media, media_path)
+    VALUES (${bare}, ${own}, true, 'text', 'tes send', now(), true, 'Media/picture/local.png')
+  `;
+  await db`
+    INSERT INTO app_message_status (message_id, chat_jid, status, sent_at, updated_at)
+    VALUES (${bare}, ${own}, 'sent', now(), now())
+  `;
+  await handleWebhook('message', {
+    payload: {
+      id: composite, from: own, fromMe: true, body: 'tes send', timestamp: 1700000005, type: 'text', hasMedia: false,
+      _data: { key: { id: bare } },
+    },
+  });
+
+  const rows = await db`SELECT id, media_path FROM app_messages WHERE id IN (${composite}, ${bare})`;
+  expect(rows.length).toBe(1);
+  expect(rows[0]!.id).toBe(composite);
+  expect(rows[0]!.media_path).toBe('Media/picture/local.png');
+  const st = await db`SELECT message_id, status FROM app_message_status WHERE message_id IN (${composite}, ${bare})`;
+  expect(st.length).toBe(1);
+  expect(st[0]!.message_id).toBe(composite);
+  expect(st[0]!.status).toBe('sent');
+
+  await db`DELETE FROM app_message_status WHERE message_id = ${composite}`;
+  await db`DELETE FROM app_messages WHERE id IN (${composite}, ${bare}) OR chat_jid = ${own}`;
+  await db`DELETE FROM app_chats WHERE chat_jid = ${own}`;
+});
+
 test('message grup: participant + quoted + tipe media + author', async () => {
   const groupMsgId = `${TAG}_gmsg`;
   await handleWebhook('message', {

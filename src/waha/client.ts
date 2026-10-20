@@ -168,6 +168,37 @@ export async function sendVoice(session: string, body: { chatId: string; file: W
   return request({ method: 'POST', path: `/api/sendVoice`, body: { session, ...body, file: filePayload(body.file) } });
 }
 
+// ===== Forward & chat flags =====
+
+export async function forwardMessage(session: string, body: { chatId: string; messageId: string }) {
+  return request({ method: 'POST', path: '/api/forwardMessage', body: { session, ...body } });
+}
+
+export async function archiveChat(session: string, chatId: string, unarchive = false) {
+  return request({
+    method: 'POST',
+    path: `/api/${session}/chats/${chatId}/${unarchive ? 'unarchive' : 'archive'}`,
+    body: {},
+  });
+}
+
+// Pin pesan di chat (24 jam / 7 hari / 30 hari, detik)
+export async function pinMessage(session: string, chatId: string, messageId: string, durationSeconds = 86400) {
+  return request({
+    method: 'POST',
+    path: `/api/${session}/chats/${chatId}/messages/${messageId}/pin`,
+    body: { duration: durationSeconds },
+  });
+}
+
+export async function unpinMessage(session: string, chatId: string, messageId: string) {
+  return request({
+    method: 'POST',
+    path: `/api/${session}/chats/${chatId}/messages/${messageId}/unpin`,
+    body: {},
+  });
+}
+
 // ===== Read / Presence =====
 
 export async function sendSeen(session: string, chatId: string) {

@@ -919,10 +919,18 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
    ═══════════════════════════════════════════════ */
 .chat-input-bar {
   display: flex;
-  align-items: flex-end;
+  /* Center: textarea 45px (min-height 42 + border) vs btn-icon 36px /
+     send-btn 42px — flex-end bikin ikon nempel ke bawah, tidak sejajar. */
+  align-items: center;
   gap: 6px;
-  padding: 5px 10px;
+  padding: 10px 10px;
   background: var(--panel);
+}
+
+/* Ikon emoji/attach/mic membesar ke atas biar align dengan textarea 45px */
+.chat-input-bar .btn-icon {
+  width: 40px;
+  height: 40px;
 }
 
 /* Jarak antara bubble terakhir dan input bar */
@@ -1479,16 +1487,83 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px
 .status-nav-next { right: 8px; }
 
 /* Attach chip */
+/* Nama pengirim di bubble (grup) */
+.msg-sender {
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+/* Pinned message strip di atas daftar pesan */
+.pinned-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.pinned-strip svg { flex-shrink: 0; color: var(--text-secondary); }
+.pinned-strip-body {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pinned-strip-unpin {
+  min-width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent;
+  color: var(--text-secondary); border-radius: 50%;
+  font-size: 15px; cursor: pointer;
+}
+.pinned-strip-unpin:hover { background: var(--panel-hover); color: var(--text); }
+
+/* Tumpukan attachment: baris di atas input bar */.attach-chips {
+  flex-wrap: wrap;
+  display: flex;
+  gap: 8px;
+  padding: 0 14px;
+}
+
 .attach-chip {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0 14px;
+  max-width: 340px;
+  flex: 1 1 260px;
+  flex-wrap: wrap;
   padding: 8px 10px;
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid var(--border);
-  border-bottom: none;
   border-radius: 12px 12px 0 0;
+}
+
+/* Area foto+nama yang bisa diklik untuk membuka input caption */
+.attach-chip-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.attach-chip-caption {
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 9px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  outline: none;
 }
 .attach-chip-thumb {
   width: 48px;

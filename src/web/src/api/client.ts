@@ -102,9 +102,23 @@ export const api = {
     request('/messages/react', { method: 'POST', body: JSON.stringify({ messageId, chatJid, emoji }) }),
   markRead: (chatJid: string) =>
     request('/messages/read', { method: 'POST', body: JSON.stringify({ chatJid }) }),
+  forwardMessage: (messageId: string, recipient: string) =>
+    request<{ success: boolean }>('/messages/forward', { method: 'POST', body: JSON.stringify({ messageId, recipient }) }),
+  setPinned: (chatJid: string, messageId: string, pinned: boolean) =>
+    request<{ success: boolean; data: { messageId: string; pinned: boolean } }>('/messages/pin', {
+      method: 'POST',
+      body: JSON.stringify({ chatJid, messageId, pinned }),
+    }),
+  flagChat: (chatJid: string, kind: 'archive' | 'mute' | 'pin-chat', on: boolean) =>
+    request<{ success: boolean }>(`/messages/${kind}`, {
+      method: 'POST',
+      body: JSON.stringify(kind === 'archive' ? { chatJid, archived: on } : { chatJid, [kind === 'mute' ? 'muted' : 'pinned']: on }),
+    }),
 
   // Contacts
   getContacts: () => request('/contacts'),
+  setCustomName: (jid: string, name: string | null) =>
+    request<{ success: boolean }>('/contacts/custom-name', { method: 'POST', body: JSON.stringify({ jid, name }) }),
 
   // Groups
   getGroups: () => request('/groups'),

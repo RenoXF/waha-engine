@@ -164,6 +164,43 @@ async function handleMessage(payload: Record<string, unknown>): Promise<void> {
 
   if (!isNew) return; // already processed — skip duplicate SSE push
 
+  // Pesan keluar: sendText/send-media menyimpan baris id sementara (bare atau
+  // composite dari respon WAHA) yang bisa berbeda bentuk dari id composite milik
+  // webhook (mis. `s.whatsapp.net` vs `c.us`). Gabungkan baris lama ke baris
+  // webhook ini, berdasar key.id polos dari `_data`, supaya tidak dobel.
+  let previousId: string | null = null;
+  const bareId = ((rawData?.key as Record<string, unknown> | undefined)?.id as string | undefined) || null;
+  if (fromMe && bareId && bareId !== id) {
+    const orphans = await db`
+      SELECT id FROM app_messages
+      WHERE from_me AND chat_jid = ${chatJid} AND id <> ${id}
+        AND (id = ${bareId} OR id LIKE ${'%\\_' + bareId})
+    `;
+    previousId = (orphans[0] as { id: string } | undefined)?.id ?? null;
+    if (previousId) {
+      await db`
+        UPDATE app_messages dst SET
+          body = COALESCE(dst.body, src.body),
+          has_media = COALESCE(dst.has_media, false) OR COALESCE(src.has_media, false),
+          media_path = COALESCE(dst.media_path, src.media_path),
+          media_mime = COALESCE(dst.media_mime, src.media_mime),
+          media_filename = COALESCE(dst.media_filename, src.media_filename),
+          media_size = COALESCE(dst.media_size, src.media_size),
+          updated_at = now()
+        FROM app_messages src
+        WHERE dst.id = ${id} AND src.id = ${previousId}
+      `;
+      // Status baris lama dipindah — timpa rasio: kalau baris webhook sudah
+      // punya status, buang baris lama saja.
+      await db`DELETE FROM app_message_status WHERE message_id = ${previousId} AND EXISTS (SELECT 1 FROM app_message_status WHERE message_id = ${id})`;
+      await db`UPDATE app_message_status SET message_id = ${id} WHERE message_id = ${previousId}`;
+      await db`DELETE FROM app_message_reactions WHERE message_id = ${previousId}`;
+      await db`DELETE FROM app_message_receipts WHERE message_id = ${previousId}`;
+      await db`DELETE FROM app_message_edits WHERE message_id = ${previousId}`;
+      await db`DELETE FROM app_messages WHERE id = ${previousId}`;
+    }
+  }
+
   // Download media if present
   if (hasMedia && mediaUrl) {
     try {
@@ -176,6 +213,7 @@ async function handleMessage(payload: Record<string, unknown>): Promise<void> {
 
   ssePush('message', {
     chatJid,
+    previousId,
     message: {
       id,
       chat_jid: chatJid,

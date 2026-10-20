@@ -18,6 +18,8 @@ export function useSSE() {
     es.addEventListener('message', (e) => {
       try {
         const data = JSON.parse(e.data);
+        //previousId: baris sisa pengirim yang digabung ke pesan ini — buang bubble lamanya.
+        if (data?.previousId) chatStore.getState().removeMessage(data.previousId);
         if (data?.message) chatStore.getState().addMessage(data.message as Message);
         chatStore.getState().loadChats();
       } catch {}

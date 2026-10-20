@@ -165,10 +165,10 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
       SELECT
         ch.*,
         COALESCE(
-          c.push_name,
           c.custom_name,
-          pn_c.push_name,
+          c.push_name,
           pn_c.custom_name,
+          pn_c.push_name,
           ch.name,
           ch.chat_jid
         ) AS resolved_name,
@@ -423,6 +423,85 @@ export const messageRoutes = new Elysia({ prefix: '/messages' })
       await failSend(tempId, err);
       return Response.json({ error: String(err) }, { status: 500 });
     }
+  })
+
+  // POST /messages/forward — teruskan pesan ke chat lain
+  .post('/forward', async ({ request }) => {
+    const body = await request.json();
+    const { messageId, recipient } = body as { messageId: string; recipient: string };
+    if (!messageId || !recipient) {
+      return Response.json({ error: 'messageId and recipient required' }, { status: 400 });
+    }
+    // DB baris pesan baru diurus webhook WAHA (fromMe, destination chat).
+    try {
+      await waha.forwardMessage(config.wahaSessionName, { chatId: recipient, messageId });
+      return { success: true };
+    } catch (err) {
+      return Response.json({ error: String(err) }, { status: 502 });
+    }
+  })
+
+  // POST /messages/pin — sematkan pesan di chat (pin strip WhatsApp)
+  .post('/pin', async ({ request }) => {
+    const body = await request.json();
+    const { messageId, chatJid, pinned } = body as { messageId: string; chatJid: string; pinned: boolean };
+    if (!messageId || !chatJid || typeof pinned !== 'boolean') {
+      return Response.json({ error: 'messageId, chatJid, pinned required' }, { status: 400 });
+    }
+    try {
+      if (pinned) await waha.pinMessage(config.wahaSessionName, chatJid, messageId);
+      else await waha.unpinMessage(config.wahaSessionName, chatJid, messageId);
+    } catch (err) {
+      return Response.json({ error: String(err) }, { status: 502 });
+    }
+    const db = getDb();
+    await db`UPDATE app_messages SET is_pinned = ${pinned}, updated_at = now() WHERE id = ${messageId}`;
+    return { success: true, data: { messageId, pinned } };
+  })
+
+  // POST /messages/archive — simpan di WAHA + DB (list utama sudah memfilter)
+  .post('/archive', async ({ request }) => {
+    const body = await request.json();
+    const { chatJid, archived } = body as { chatJid: string; archived: boolean };
+    if (!chatJid || typeof archived !== 'boolean') {
+      return Response.json({ error: 'chatJid and archived required' }, { status: 400 });
+    }
+    let wahaError: string | null = null;
+    try {
+      await waha.archiveChat(config.wahaSessionName, chatJid, !archived);
+    } catch (err) {
+      wahaError = String(err); // tetap simpan flag lokal; sync berikutnya menuntaskan
+    }
+    const db = getDb();
+    await db`UPDATE app_chats SET is_archived = ${archived}, updated_at = now() WHERE chat_jid = ${chatJid}`;
+    ssePush('chats', null);
+    return { success: true, data: { chatJid, archived, wahaError } };
+  })
+
+  // POST /messages/mute — flag lokal saja: WAHA versi ini belum expose mute chat
+  .post('/mute', async ({ request }) => {
+    const body = await request.json();
+    const { chatJid, muted } = body as { chatJid: string; muted: boolean };
+    if (!chatJid || typeof muted !== 'boolean') {
+      return Response.json({ error: 'chatJid and muted required' }, { status: 400 });
+    }
+    const db = getDb();
+    await db`UPDATE app_chats SET is_muted = ${muted}, updated_at = now() WHERE chat_jid = ${chatJid}`;
+    ssePush('chats', null);
+    return { success: true, data: { chatJid, muted } };
+  })
+
+  // POST /messages/pin-chat — pin urutan di sidebar (flag lokal, ORDER BY is_pinned)
+  .post('/pin-chat', async ({ request }) => {
+    const body = await request.json();
+    const { chatJid, pinned } = body as { chatJid: string; pinned: boolean };
+    if (!chatJid || typeof pinned !== 'boolean') {
+      return Response.json({ error: 'chatJid and pinned required' }, { status: 400 });
+    }
+    const db = getDb();
+    await db`UPDATE app_chats SET is_pinned = ${pinned}, updated_at = now() WHERE chat_jid = ${chatJid}`;
+    ssePush('chats', null);
+    return { success: true, data: { chatJid, pinned } };
   })
 
   // POST /messages/delete

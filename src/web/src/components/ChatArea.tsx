@@ -159,7 +159,12 @@ function OverlayMeta({ msg }: { msg: Message }) {
   );
 }
 
-function MessageBubble({ msg, onRetry }: { msg: Message; onRetry: (msg: Message) => void }) {
+function MessageBubble({ msg, onRetry, isGroup }: { msg: Message; onRetry: (msg: Message) => void; isGroup?: boolean }) {
+  // Nama pengirim grup, warna stabil per JID (ala WhatsApp Web)
+  const senderName = isGroup && !msg.from_me && msg.from_jid ? resolveName(msg.from_jid) : null;
+  const senderColor = msg.from_jid
+    ? `hsl(${[...msg.from_jid].reduce((a, c) => a * 31 + c.charCodeAt(0), 0) % 360} 60% 62%)`
+    : undefined;
   if (msg.is_deleted) {
     return (
       <div className="msg-deleted">
@@ -204,6 +209,12 @@ function MessageBubble({ msg, onRetry }: { msg: Message; onRetry: (msg: Message)
         <div
           className={`msg-bubble ${msg.from_me ? 'msg-bubble-out' : 'msg-bubble-in'} ${hasVisualMedia ? 'msg-bubble-media' : ''} ${isMediaOnly ? 'msg-bubble-media-only' : ''}`}
         >
+          {/* ── Sender name (grup) ── */}
+          {senderName && (
+            <div className="msg-sender" style={{ color: senderColor }}>
+              {senderName}
+            </div>
+          )}
           {msg.quoted_id && (
             <div className="msg-quoted">
               <span className="msg-quoted-name">
@@ -335,6 +346,45 @@ function MessageBubble({ msg, onRetry }: { msg: Message; onRetry: (msg: Message)
               <path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" />
             </svg>
           </button>
+          <button
+            className="msg-action-btn"
+            title="Forward"
+            aria-label="Forward message"
+            onClick={async () => {
+              const to = window.prompt('Forward ke JID (contoh: 62812xxx@c.us atau 123456789@g.us)');
+              if (!to) return;
+              try {
+                await api.forwardMessage(msg.id, to);
+                uiStore.getState().showToast(`Diteruskan ke ${to}`, 'success');
+                chatStore.getState().loadChats();
+              } catch (err) {
+                uiStore.getState().showToast('Gagal forward', 'error');
+                console.error(err);
+              }
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M14 9V5l7 7-7 7v-4.1c-5 0-8.5 1.6-11 5.1 1-5 4-10 11-11z" />
+            </svg>
+          </button>
+          <button
+            className="msg-action-btn"
+            title={msg.is_pinned ? 'Unpin' : 'Pin pesan'}
+            aria-label={msg.is_pinned ? 'Unpin message' : 'Pin message'}
+            onClick={() => {
+              const next = !msg.is_pinned;
+              api.setPinned(msg.chat_jid, msg.id, next)
+                .then(() => chatStore.getState().updateMessage(msg.id, { is_pinned: next }))
+                .catch(() => uiStore.getState().showToast('Gagal pin pesan', 'error'));
+            }}
+          >
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="currentColor"
+              style={{ transform: 'rotate(45deg)', opacity: msg.is_pinned ? 1 : 0.55 }}
+            >
+              <path d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -343,12 +393,57 @@ function MessageBubble({ msg, onRetry }: { msg: Message; onRetry: (msg: Message)
 
 export default function ChatArea() {
   const { messages, currentChat, loading } = chatStore();
+  const chats = chatStore((s) => s.chats);
+  const chat = chats.find((c) => c.chat_jid === currentChat);
+  const pinnedMsg = messages.find((m) => m.is_pinned && !m.is_deleted);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [showChatMenu, setShowChatMenu] = useState(false);
+  const [pendingItems, setPendingItems] = useState<{ file: File; caption: string }[]>([]);
+  const [activeChip, setActiveChip] = useState<number | null>(null);
+  const chatMenuRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Tutup menu chat saat klik di luar
+  useEffect(() => {
+    if (!showChatMenu) return;
+    const h = (e: MouseEvent) => {
+      if (!chatMenuRef.current!.contains(e.target as Node)) setShowChatMenu(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [showChatMenu]);
+
+  // Ganti nama tampilan: custom_name di DB lokal, bukan nama di HP
+  const renameChat = async () => {
+    if (!currentChat) return;
+    const name = window.prompt('Ganti nama tampilan (kosongkan untuk reset)', displayName || '');
+    if (name === null) return;
+    try {
+      await api.setCustomName(currentChat, name);
+      await contactStore.getState().loadContacts();
+      await chatStore.getState().loadChats();
+    } catch (err) {
+      uiStore.getState().showToast('Gagal ganti nama', 'error');
+      console.error(err);
+    }
+  };
+
+  const flagChat = async (kind: 'archive' | 'mute' | 'pin-chat') => {    setShowChatMenu(false);
+    if (!currentChat || !chat) return;
+    const on =
+      kind === 'archive' ? !chat.is_archived : kind === 'mute' ? !chat.is_muted : !chat.is_pinned;
+    try {
+      await api.flagChat(currentChat, kind, on);
+      uiStore.getState().showToast(kind === 'archive' ? (on ? 'Chat diarsipkan' : 'Chat di-unarchive') : (on ? 'Chat dipin' : 'Chat diunpin'), 'success');
+      chatStore.getState().loadChats();
+    } catch (err) {
+      uiStore.getState().showToast('Gagal mengubah chat', 'error');
+      console.error(err);
+    }
+  };
 
   // Virtuoso prepend bookkeeping: keep scroll anchored when older pages load
   const FIRST_ITEM_INDEX = 10_000;
@@ -387,9 +482,13 @@ export default function ChatArea() {
     return () => window.removeEventListener('keydown', onKey);
   }, [currentChat, showEmoji]);
 
-  const filePreview = useMemo(
-    () => (pendingFile && pendingFile.type.startsWith('image/') ? URL.createObjectURL(pendingFile) : null),
-    [pendingFile],
+  const previews = useMemo(
+    () =>
+      pendingItems.map((it) => ({
+        it,
+        url: it.file.type.startsWith('image/') ? URL.createObjectURL(it.file) : null,
+      })),
+    [pendingItems],
   );
 
   const dateKeys = useMemo(() => {
@@ -409,7 +508,7 @@ export default function ChatArea() {
   const contact = currentChat ? contacts.find((c) => c.jid === currentChat) : undefined;
   const headerSubtitle = group
     ? `${group.participant_count ?? 0} participants`
-    : contact?.about || 'tap here for contact info';
+    : `${contact?.phone || currentChat?.split('@')[0] || '-'}${contact?.about ? ` · ${contact.about}` : ''}`;
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
@@ -419,58 +518,62 @@ export default function ChatArea() {
   }, []);
 
   const handleSend = async () => {
-    if ((!input.trim() && !pendingFile) || !currentChat || sending) return;
+    if ((!input.trim() && pendingItems.length === 0) || !currentChat || sending) return;
     const text = input;
-    const file = pendingFile;
+    const items = pendingItems;
     setSending(true);
     setInput('');
-    setPendingFile(null);
+    setPendingItems([]);
+    setActiveChip(null);
     if (textareaRef.current) textareaRef.current.style.height = '42px';
 
-    if (file) {
-      const tempId = crypto.randomUUID();
+    if (items.length > 0) {
+      // Kirim satu per satu: /messages/send-media hanya membawa 1 file per pesan.
       const chatJid = currentChat;
-      const optimistic: Message = {
-        id: tempId,
-        chat_jid: chatJid,
-        from_jid: null,
-        from_me: true,
-        participant: null,
-        message_type: messageTypeForFile(file),
-        body: text.trim() || null,
-        quoted_id: null,
-        forwarded: false,
-        is_starred: false,
-        has_media: true,
-        media_path: null,
-        media_mime: file.type,
-        media_url: null,
-        media_filename: file.name,
-        media_size: file.size,
-        is_edited: false,
-        is_deleted: false,
-        status: 'pending',
-        wa_timestamp: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-      };
-      chatStore.getState().addMessage(optimistic);
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('recipient', chatJid);
-      if (text.trim()) fd.append('caption', text.trim());
-      fd.append('clientTempId', tempId);
-      try {
-        const res = await api.sendMedia(fd);
-        chatStore.getState().reconcileMessage(tempId, res.data.messageId);
-      } catch (err) {
-        chatStore.getState().removeMessage(tempId);
-        setInput(text);
-        setPendingFile(file);
-        uiStore.getState().showToast('Failed to send media', 'error');
-        console.error(err);
-      } finally {
-        setSending(false);
+      for (let i = 0; i < items.length; i++) {
+        const file = items[i].file;
+        // Caption per chip; teks textarea jadi fallback caption chip pertama.
+        const cap = items[i].caption || (i === 0 ? text.trim() : '');
+        const tempId = crypto.randomUUID();
+        const optimistic: Message = {
+          id: tempId,
+          chat_jid: chatJid,
+          from_jid: null,
+          from_me: true,
+          participant: null,
+          message_type: messageTypeForFile(file),
+          body: cap || null,
+          quoted_id: null,
+          forwarded: false,
+          is_starred: false,
+          has_media: true,
+          media_path: null,
+          media_mime: file.type,
+          media_url: null,
+          media_filename: file.name,
+          media_size: file.size,
+          is_edited: false,
+          is_deleted: false,
+          status: 'pending',
+          wa_timestamp: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        };
+        chatStore.getState().addMessage(optimistic);
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('recipient', chatJid);
+        if (cap) fd.append('caption', cap);
+        fd.append('clientTempId', tempId);
+        try {
+          const res = await api.sendMedia(fd);
+          chatStore.getState().reconcileMessage(tempId, res.data.messageId);
+        } catch (err) {
+          chatStore.getState().removeMessage(tempId);
+          uiStore.getState().showToast(`Gagal kirim ${file.name}`, 'error');
+          console.error(err);
+        }
       }
+      setSending(false);
       return;
     }
 
@@ -529,23 +632,44 @@ export default function ChatArea() {
   const onFilePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = '';
+    setPending(f);
+  };
+
+  // Dipakai file picker, paste (Ctrl-V), dan drag & drop — menumpuk, bukan menimpa.
+  const setPending = (f: File | null | undefined) => {
     if (!f) return;
     if (f.size > MAX_UPLOAD_BYTES) {
       uiStore.getState().showToast('File too large (max 50MB)', 'error');
       return;
     }
-    setPendingFile(f);
+    setPendingItems((prev) => [...prev, { file: f, caption: '' }]);
   };
 
-  const hasInput = input.trim().length > 0 || !!pendingFile;
+  const removePending = (index: number) => {
+    setPendingItems((prev) => prev.filter((_, i) => i !== index));
+    setActiveChip((prev) => (prev === index ? null : prev !== null && prev > index ? prev - 1 : prev));
+  };
+
+  const hasInput = input.trim().length > 0 || pendingItems.length > 0;
 
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div
+      className="flex-1 flex flex-col h-full"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => { e.preventDefault(); setPending(e.dataTransfer.files?.[0]); }}
+    >
       {/* Header */}
       <div className="chat-header">
         <Avatar name={displayName || currentChat || ''} size="md" />
         <div className="chat-header-info">
-          <div className="chat-header-name">{displayName || currentChat}</div>
+          <div
+            className="chat-header-name"
+            title="Klik untuk ganti nama tampilan"
+            style={{ cursor: 'pointer' }}
+            onClick={renameChat}
+          >
+            {displayName || currentChat}
+          </div>
           <div className="chat-header-status">{headerSubtitle}</div>
         </div>
         <div className="chat-header-actions">
@@ -558,11 +682,45 @@ export default function ChatArea() {
           <button className="btn-icon" style={{ color: 'var(--text-secondary)' }} title="Search">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
           </button>
-          <button className="btn-icon" style={{ color: 'var(--text-secondary)' }} title="Menu">
+          <button className="btn-icon" style={{ color: 'var(--text-secondary)' }} title="Menu" onClick={() => setShowChatMenu((v) => !v)}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
           </button>
         </div>
       </div>
+
+      {/* Chat menu (mute / archive / pin chat) */}
+      {showChatMenu && (
+        <div className="menu-dropdown" ref={chatMenuRef} style={{ position: 'absolute', top: 52, right: 14 }}>
+          <button className="menu-item" onClick={() => void flagChat('mute')}>
+            {chat?.is_muted ? 'Unmute' : 'Mute'}
+          </button>
+          <button className="menu-item" onClick={() => void flagChat('archive')}>
+            {chat?.is_archived ? 'Unarchive' : 'Archive'}
+          </button>
+          <button className="menu-item" onClick={() => void flagChat('pin-chat')}>
+            {chat?.is_pinned ? 'Unpin chat' : 'Pin chat'}
+          </button>
+        </div>
+      )}
+
+      {/* Pinned message strip */}
+      {pinnedMsg && (
+        <div className="pinned-strip">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ transform: 'rotate(45deg)' }}>
+            <path d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z" />
+          </svg>
+          <div className="pinned-strip-body">{pinnedMsg.body || `[${pinnedMsg.message_type}]`}</div>
+          <button
+            className="pinned-strip-unpin"
+            title="Unpin"
+            onClick={() =>
+              api.setPinned(pinnedMsg.chat_jid, pinnedMsg.id, false)
+                .then(() => chatStore.getState().updateMessage(pinnedMsg.id, { is_pinned: false }))
+                .catch(() => uiStore.getState().showToast('Gagal unpin', 'error'))
+            }
+          >×</button>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="msg-container">
@@ -605,7 +763,7 @@ export default function ChatArea() {
               return (
                 <div className="msg-item" data-id={msg.id}>
                   {dateKeys[index] && <DatePill date={msg.wa_timestamp} />}
-                  <MessageBubble msg={msg} onRetry={retryMessage} />
+                  <MessageBubble msg={msg} onRetry={retryMessage} isGroup={!!group} />
                 </div>
               );
             }}
@@ -613,27 +771,45 @@ export default function ChatArea() {
         )}
       </div>
 
-      {/* Attachment preview chip */}
-      {pendingFile && (
-        <div className="attach-chip">
-          {filePreview ? (
-            <img src={filePreview} alt="" className="attach-chip-thumb" />
-          ) : (
-            <div className="attach-chip-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z" />
-              </svg>
+      {/* Attachment preview chips (menumpuk) */}
+      {previews.length > 0 && (
+        <div className="attach-chips">
+          {previews.map((p, idx) => (
+            <div className="attach-chip" key={`${p.it.file.name}-${idx}`}>
+              <div className="attach-chip-main" onClick={() => setActiveChip(activeChip === idx ? null : idx)}>
+                {p.url ? (
+                  <img src={p.url} alt="" className="attach-chip-thumb" />
+                ) : (
+                  <div className="attach-chip-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z" />
+                    </svg>
+                  </div>
+                )}
+                <div className="attach-chip-info">
+                  <div className="attach-chip-name">{p.it.file.name}</div>
+                  <div className="attach-chip-size">{formatSize(p.it.file.size)}</div>
+                </div>
+              </div>
+              <button className="attach-chip-remove" onClick={() => removePending(idx)} aria-label="Remove attachment">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                </svg>
+              </button>
+              {activeChip === idx && (
+                <input
+                  autoFocus
+                  className="attach-chip-caption"
+                  placeholder="Caption"
+                  value={p.it.caption}
+                  onChange={(e) =>
+                    setPendingItems((prev) => prev.map((it, i2) => (i2 === idx ? { ...it, caption: e.target.value } : it)))
+                  }
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setActiveChip(null); } }}
+                />
+              )}
             </div>
-          )}
-          <div className="attach-chip-info">
-            <div className="attach-chip-name">{pendingFile.name}</div>
-            <div className="attach-chip-size">{formatSize(pendingFile.size)}</div>
-          </div>
-          <button className="attach-chip-remove" onClick={() => setPendingFile(null)} aria-label="Remove attachment">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-            </svg>
-          </button>
+          ))}
         </div>
       )}
 
@@ -649,10 +825,17 @@ export default function ChatArea() {
           <textarea
             ref={textareaRef}
             className="chat-textarea"
-            placeholder={pendingFile ? 'Add a caption' : 'Type a message'}
+            placeholder={pendingItems.length > 0 ? 'Add a caption (klik chip utk per-gambar)' : 'Type a message'}
             value={input}
             onChange={(e) => { setInput(e.target.value); autoResize(); }}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            onPaste={(e) => {
+              const img = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith('image/'));
+              if (img) {
+                e.preventDefault();
+                setPending(img.getAsFile());
+              }
+            }}
             rows={1}
           />
         </div>
